@@ -33,8 +33,15 @@ def generate_key(path: str):
 
 
 def load_cert_and_key(key_path: str):
-    """return (certificate_object, private_key_object)"""
+    """return (certificate_object, private_key_object)
+
+    The certificate is stored next to the private key (``<key>.cert.pem``).
+    Re-using the very same certificate is mandatory: Android only accepts
+    an update of an installed application when the signing certificate is
+    byte-for-byte identical.
+    """
     import datetime
+    import os
 
     from cryptography import x509
     from cryptography.hazmat.primitives import hashes, serialization
@@ -43,13 +50,19 @@ def load_cert_and_key(key_path: str):
     with open(key_path, "rb") as fh:
         key = serialization.load_pem_private_key(fh.read(), password=None)
 
+    cert_path = os.path.splitext(key_path)[0] + ".cert.pem"
+    if os.path.exists(cert_path):
+        with open(cert_path, "rb") as fh:
+            cert = x509.load_pem_x509_certificate(fh.read())
+        return cert, key
+
     subject = issuer = x509.Name(
         [
             x509.NameAttribute(NameOID.COMMON_NAME, "BABARPHANTOM Persian"),
             x509.NameAttribute(NameOID.ORGANIZATION_NAME, "Custom Build"),
         ]
     )
-    now = datetime.datetime.utcnow()
+    now = datetime.datetime.now(datetime.timezone.utc)
     cert = (
         x509.CertificateBuilder()
         .subject_name(subject)
@@ -60,6 +73,8 @@ def load_cert_and_key(key_path: str):
         .not_valid_after(now + datetime.timedelta(days=3650))
         .sign(key, hashes.SHA256())
     )
+    with open(cert_path, "wb") as fh:
+        fh.write(cert.public_bytes(serialization.Encoding.PEM))
     return cert, key
 
 
