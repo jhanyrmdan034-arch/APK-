@@ -26,14 +26,27 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
         } else {
             $tmp=$_FILES['apk']['tmp_name'];
             $orig=sanitize_string($_FILES['apk']['name']??'app.apk',255);
-            // اطمینان از وجود و قابل نوشتن بودن پوشه
+            // اطمینان از وجود و قابل نوشتن بودن پوشه — 0775 برای سازگاری
             if(!is_dir(APK_STORE_DIR)){
-                @mkdir(APK_STORE_DIR, 0750, true);
+                @mkdir(APK_STORE_DIR, 0775, true);
+                @chmod(APK_STORE_DIR, 0775);
             }
+            if(!is_writable(APK_STORE_DIR)){
+                @chmod(APK_STORE_DIR, 0775);
+                @chmod(dirname(APK_STORE_DIR), 0775);
+            }
+            $destDir = APK_STORE_DIR;
             if(!is_dir(APK_STORE_DIR) || !is_writable(APK_STORE_DIR)){
-                $msg='پوشه '.APK_STORE_DIR.' قابل نوشتن نیست — از File Manager دسترسی را 750 یا 755 بگذار.'; $err=true;
-            } else {
-                // اعتبارسنجی: باید ZIP/APK باشد (PK header) — اما برای تست، اگر هدر خوانده نشد فقط هشدار بده
+                $fallback = __DIR__ . '/../uploads_apk';
+                @mkdir($fallback, 0775, true);
+                if(is_dir($fallback) && is_writable($fallback)){
+                    $destDir = $fallback;
+                } else {
+                    $msg='پوشه '.h(APK_STORE_DIR).' قابل نوشتن نیست — هاست open_basedir دارد. از File Manager روی private/apk راست کلیک → Permissions → 0755 بگذار.'; $err=true;
+                }
+            }
+            if(!$err){
+                // اعتبارسنجی: باید ZIP/APK باشد (PK header)
                 $head=@file_get_contents($tmp, false, null, 0, 4);
                 if($head===false){
                     $msg='فایل موقت خوانده نشد — دوباره امتحان کن.'; $err=true;
@@ -41,17 +54,21 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
                     $msg='فایل APK معتبر نیست (باید با PK شروع شود — فایل ZIP/APK واقعی انتخاب کن).'; $err=true;
                 } else {
                     $fname='BABARPHANTOM_'.$version.'_'.time().'.apk';
-                    $dest=APK_STORE_DIR.'/'.$fname;
+                    $dest=$destDir.'/'.$fname;
                     $moved = @move_uploaded_file($tmp,$dest);
                     if(!$moved){
                         $moved = @copy($tmp,$dest);
                         if($moved) @unlink($tmp);
                     }
+                    if(!$moved && is_readable($tmp)){
+                        $data=@file_get_contents($tmp);
+                        if($data!==false) $moved=@file_put_contents($dest,$data)!==false;
+                    }
                     if(!$moved){
                         $last = error_get_last();
-                        $msg='خطای ذخیره فایل به '.h($dest).' — '.h($last['message'] ?? 'مجوز پوشه را چک کن'); $err=true;
+                        $msg='خطای ذخیره فایل به '.h($dest).' — '.h($last['message'] ?? 'مجوز پوشه را چک کن — در File Manager روی private/apk راست کلیک → Permissions → 0755'); $err=true;
                     } else {
-                        @chmod($dest, 0640);
+                        @chmod($dest, 0644);
                         $size=filesize($dest);
                         if($size===false) $size=(int)($_FILES['apk']['size'] ?? 0);
                         $sha=@hash_file('sha256',$dest) ?: hash('sha256', (string)time());

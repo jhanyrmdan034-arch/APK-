@@ -7,6 +7,42 @@ $me=admin_require_admin();
 $pdo=db();
 $msg=''; $err=false; $result=null;
 
+// --- آپلود سریع APK در همین صفحه (برای راحتی) ---
+if (($_POST['action'] ?? '') === 'upload_apk') {
+    $version = sanitize_string($_POST['version'] ?? '', 32) ?: '1.0.0';
+    $code = (int)($_POST['version_code'] ?? 1);
+    $isActive = 1;
+    $upErr = $_FILES['apk']['error'] ?? UPLOAD_ERR_NO_FILE;
+    if ($upErr !== UPLOAD_ERR_OK) {
+        $map = [1=>'حجم بیش از upload_max_filesize',2=>'حجم بیش از MAX_FILE_SIZE',3=>'ناقص',4=>'فایلی انتخاب نشده',6=>'پوشه موقت نیست',7=>'خطای دیسک',8=>'افزونه'];
+        $msg='خطای آپلود APK: '.($map[$upErr] ?? "کد $upErr"); $err=true;
+    } elseif (empty($_FILES['apk']['tmp_name']) || !is_uploaded_file($_FILES['apk']['tmp_name'])) {
+        $msg='فایل APK انتخاب نشده'; $err=true;
+    } else {
+        $tmp = $_FILES['apk']['tmp_name'];
+        if (!is_dir(APK_STORE_DIR)) @mkdir(APK_STORE_DIR, 0775, true);
+        if (!is_writable(APK_STORE_DIR)) @chmod(APK_STORE_DIR, 0775);
+        $head = @file_get_contents($tmp, false, null, 0, 2);
+        if ($head === false || substr($head,0,2) !== 'PK') { $msg='فایل APK معتبر نیست (PK header ندارد)'; $err=true; }
+        else {
+            $fname='BABARPHANTOM_'.$version.'_'.time().'.apk';
+            $dest=(is_writable(APK_STORE_DIR)?APK_STORE_DIR:(__DIR__.'/../uploads_apk')).'/'.$fname;
+            if (!is_dir(dirname($dest))) @mkdir(dirname($dest),0775,true);
+            $moved=@move_uploaded_file($tmp,$dest) ?: @copy($tmp,$dest);
+            if (!$moved && is_readable($tmp)) { $d=@file_get_contents($tmp); if($d!==false) $moved=@file_put_contents($dest,$d)!==false; }
+            if (!$moved) { $msg='ذخیره ناموفق — مجوز پوشه private/apk را 0755 کن'; $err=true; }
+            else {
+                @chmod($dest,0644);
+                $size=filesize($dest) ?: (int)($_FILES['apk']['size']??0);
+                $sha=@hash_file('sha256',$dest) ?: hash('sha256',(string)time());
+                $pdo->exec("UPDATE apk_files SET is_active=0");
+                $pdo->prepare("INSERT INTO apk_files (version,version_code,file_name,file_path,file_size,sha256,is_active,uploaded_by) VALUES (?,?,?,?,?,?,?,?)")
+                    ->execute([$version,$code,($_FILES['apk']['name']??'app.apk'),$dest,$size,$sha,1,$me['id']]);
+                $msg="✅ APK $version آپلود شد — حالا از لیست انتخاب کن"; $err=false;
+            }
+        }
+    }
+}
 // لیست APKها و تحویل‌های اخیر
 $apkFiles = $pdo->query("SELECT id,version,version_code,file_name,file_size,is_active FROM apk_files ORDER BY id DESC")->fetchAll();
 $activeApk = get_active_apk();
@@ -141,13 +177,26 @@ $recentDeliveries=$pdo->query("SELECT d.id, d.delivery_token, d.api_key, d.downl
 <small style="color:#fbbf24">⚠️ فقط سرور ذخیره رمزنگاری می‌کند؛ در APK/لینک/لاگ plaintext نمی‌ماند. اعتبارسنجی با getMe انجام می‌شود.</small>
 
 <label>فایل APK عمومی *</label>
+<?php if(!$apkFiles): ?>
+<div style="background:#7f1d1d;padding:10px;border-radius:8px;margin:6px 0;font-size:12px">⚠️ هنوز APK آپلود نشده — همینجا آپلود کن:</div>
+<form method="post" enctype="multipart/form-data" style="background:#0f172a;padding:10px;border-radius:8px;margin:6px 0">
+<input type="hidden" name="action" value="upload_apk">
+<div style="display:flex;gap:6px;flex-wrap:wrap">
+<input name="version" placeholder="نسخه مثل 1.0.0" value="1.0.0" required style="flex:1">
+<input name="version_code" type="number" value="1" min="1" style="width:90px">
+</div>
+<input type="file" name="apk" accept=".apk,application/vnd.android.package-archive" required>
+<button style="background:#f59e0b;color:#000;width:100%;margin-top:6px">📤 آپلود سریع APK همینجا</button>
+</form>
+<p style="text-align:center;color:#94a3b8;font-size:11px">یا از <a href="apk.php" style="color:#38bdf8">صفحه APK</a> آپلود کن</p>
+<?php endif; ?>
 <select name="apk_id" required>
 <option value="">— انتخاب کنید —</option>
 <?php foreach($apkFiles as $a): ?>
 <option value="<?=$a['id']?>" <?= $a['is_active']?'selected':''?>><?=htmlspecialchars($a['version'])?> — <?=htmlspecialchars($a['file_name'])?> — <?=round($a['file_size']/1024/1024,2)?> MB <?= $a['is_active']?' ✅ فعال':''?></option>
 <?php endforeach; ?>
 </select>
-<?php if(!$apkFiles): ?><p style="color:#f87171">⚠️ ابتدا در <a href="apk.php" style="color:#38bdf8">مدیریت APK</a> بارگذاری کنید.</p><?php endif; ?>
+<?php if($apkFiles): ?><p style="font-size:11px;color:#22c55e">✅ <?=count($apkFiles)?> فایل آماده — فعال: <?=htmlspecialchars($activeApk['version']??'—')?></p><?php endif; ?>
 
 <button style="background:#22c55e;color:#052e16;width:100%;margin-top:10px">➕ ساخت مشتری و بسته تحویل</button>
 </form>
