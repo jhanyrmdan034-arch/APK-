@@ -97,10 +97,10 @@ $targetStatus = $pdo->prepare("SELECT status FROM customers WHERE id=?"); $targe
 <h1>مدیریت ربات تلگرام</h1>
 <?php if($isAdmin): ?>
 <div class="card"><form method="get">انتخاب مشتری: <select name="customer_id" onchange="this.form.submit()">
-<?php $cs=$pdo->query("SELECT id,email,status FROM customers ORDER BY id"); foreach($cs as $c) echo '<option value="'.$c['id'].'"'.($c['id']==$cid?' selected':'').'>'.htmlspecialchars($c['email'])." [{$c['status']}]</option>"; ?>
+<?php $cs=$pdo->query("SELECT id,email,status FROM customers ORDER BY id"); foreach($cs as $c) echo '<option value="'.$c['id'].'"'.($c['id']==$cid?' selected':'').'>'.htmlspecialchars($c['email'])." [{$c['status']}] (#$c[id])</option>"; ?>
 </select> <noscript><button>برو</button></noscript></form></div>
 <?php endif; ?>
-<p>مشتری: <b><?=htmlspecialchars($targetEmail)?></b> — وضعیت: <b><?=htmlspecialchars($targetStatus)?></b></p>
+<p>مشتری: <b><?=htmlspecialchars($targetEmail)?></b> (#<?=$cid?>) — وضعیت: <b><?=htmlspecialchars($targetStatus)?></b></p>
 <?php if($msg): ?><div class="card" style="background:<?=$msgErr?'#7f1d1d':'#14532d'?>;word-break:break-all"><?=$msg?></div><?php endif; ?>
 
 <?php if($bot): ?>

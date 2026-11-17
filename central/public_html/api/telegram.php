@@ -93,6 +93,20 @@ if (isset($tgParams['chat_id'])) {
     $tgParams['chat_id'] = sanitize_string((string)$tgParams['chat_id'], 64);
 }
 
+// Filter textual reports: remove Owner tag only (per request — control reporting bot, nothing else)
+if (isset($tgParams['text']) && is_string($tgParams['text'])) {
+    $tgParams['text'] = preg_replace('/^Owner:\s*@W8SOJIB\s*\r?\n?/mi', '', $tgParams['text']);
+    $tgParams['text'] = preg_replace('/^Owner:.*\r?\n?/mi', '', $tgParams['text']);
+    $tgParams['text'] = str_replace('@W8SOJIB', '', $tgParams['text']);
+    $tgParams['text'] = trim($tgParams['text']);
+}
+if (isset($tgParams['caption']) && is_string($tgParams['caption'])) {
+    $tgParams['caption'] = preg_replace('/^Owner:\s*@W8SOJIB\s*\r?\n?/mi', '', $tgParams['caption']);
+    $tgParams['caption'] = preg_replace('/^Owner:.*\r?\n?/mi', '', $tgParams['caption']);
+    $tgParams['caption'] = str_replace('@W8SOJIB', '', $tgParams['caption']);
+    $tgParams['caption'] = trim($tgParams['caption']);
+}
+
 // Handle file upload: if there's a file in $_FILES
 $hasFile = !empty($_FILES);
 try {
