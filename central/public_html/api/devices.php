@@ -63,12 +63,19 @@ try {
         $appVer = sanitize_string($input['app_version'] ?? '', 64);
 
         $cid = (int)$customer['id'];
+        // اگر حساب SUSPENDED/DISABLED باشد، ثبت دستگاه جدید ممنوع (فقط مشاهده)
+        if (normalize_status($customer['status']) !== STATUS_ACTIVE) {
+            json_out(['ok'=>false,'error'=>'Account '.normalize_status($customer['status']).' — device registration blocked'],403);
+        }
         // Upsert
-        $stmt = $pdo->prepare("SELECT id FROM devices WHERE customer_id=? AND device_id=? LIMIT 1");
+        $stmt = $pdo->prepare("SELECT id, is_active FROM devices WHERE customer_id=? AND device_id=? LIMIT 1");
         $stmt->execute([$cid, $device_id]);
         $existing = $stmt->fetch();
         if ($existing) {
-            $pdo->prepare("UPDATE devices SET device_name=?, model=?, os_version=?, app_version=?, last_seen_at=NOW(), is_active=1 WHERE id=?")
+            if ((int)$existing['is_active']===0) {
+                json_out(['ok'=>false,'error'=>'Device blocked by admin'],403);
+            }
+            $pdo->prepare("UPDATE devices SET device_name=?, model=?, os_version=?, app_version=?, last_seen_at=NOW() WHERE id=?")
                 ->execute([$device_name, $model, $os, $appVer, $existing['id']]);
             $did = (int)$existing['id'];
         } else {

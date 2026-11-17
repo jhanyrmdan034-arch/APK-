@@ -15,4 +15,8 @@ define('ENCRYPTION_KEY_B64', 'REPLACE_WITH_openssl_rand_-base64_32_OUTPUT');
 define('JWT_SECRET', 'REPLACE_WITH_openssl_rand_-base64_64_OUTPUT');
 
 define('APP_URL', 'https://your-host.example.com');
+// Sales bot (ربات فروش) — از @BotFather بگیرید
+define('SALES_BOT_TOKEN', '123456789:AAH_YOUR_SALES_BOT_TOKEN');
+define('SALES_BOT_USERNAME', 'YourSalesBot');
+
 define('ENV', 'production');

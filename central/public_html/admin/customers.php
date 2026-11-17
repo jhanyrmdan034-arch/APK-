@@ -3,69 +3,107 @@ declare(strict_types=1);
 require_once __DIR__ . '/../../private/config/config.php';
 require_once __DIR__ . '/../../private/security/helpers.php';
 if (session_status()===PHP_SESSION_NONE){session_name(SESSION_NAME);session_start();}
-$me = admin_require_login();
-if (!is_admin((int)$me['id'])) { http_response_code(403); exit('فقط مدیر کل'); }
+$me = admin_require_admin();
 $pdo = db();
-$msg = '';
+$msg=''; $msgErr=false;
 if ($_SERVER['REQUEST_METHOD']==='POST') {
     $action = $_POST['action'] ?? '';
     if ($action==='add') {
         $email=sanitize_string($_POST['email']??'',255); $name=sanitize_string($_POST['name']??'',255);
-        $pass=$_POST['password']??''; $status=$_POST['status']??'active';
-        if (!is_valid_email($email)) $msg='ایمیل نامعتبر';
-        elseif (strlen($pass)<8) $msg='رمز کوتاه است';
+        $pass=$_POST['password']??''; $status=normalize_status($_POST['status']??'ACTIVE');
+        if (!is_valid_email($email)) {$msg='ایمیل نامعتبر';$msgErr=true;}
+        elseif (strlen($pass)<8) {$msg='رمز کوتاه است';$msgErr=true;}
+        elseif (!in_array($status,[STATUS_ACTIVE,STATUS_SUSPENDED,STATUS_DISABLED],true)) {$msg='وضعیت نامعتبر';$msgErr=true;}
         else {
             try {
-                $uuid=sprintf('%04x%04x-%04x-%04x-%04x-%04x%04x%04x',random_int(0,0xffff),random_int(0,0xffff),random_int(0,0xffff),random_int(0,0x0fff)|0x4000,random_int(0,0x3fff)|0x8000,random_int(0,0xffff),random_int(0,0xffff),random_int(0,0xffff));
+                $uuid=generate_uuid();
                 $hash=password_hash($pass,PASSWORD_BCRYPT,['cost'=>BCRYPT_COST]);
                 $pdo->prepare("INSERT INTO customers (uuid,email,password_hash,name,status) VALUES (?,?,?,?,?)")->execute([$uuid,$email,$hash,$name,$status]);
                 $id=(int)$pdo->lastInsertId();
-                $apiKey=bin2hex(random_bytes(32));
+                $apiKey=generate_api_key();
                 $pdo->prepare("INSERT INTO api_keys (customer_id,api_key) VALUES (?,?)")->execute([$id,$apiKey]);
-                sec_log('customer_created',(int)$me['id'],['new_id'=>$id]);
-                $msg="مشتری #$id ساخته شد — API Key: $apiKey";
-            } catch (Throwable $e){ $msg='خطا: '.htmlspecialchars($e->getMessage()); }
+                $pdo->prepare("INSERT IGNORE INTO wallets (customer_id,balance) VALUES (?,0)")->execute([$id]);
+                admin_log((int)$me['id'],'customer_created','customer',$id,['email'=>$email]);
+                $msg="مشتری #$id ساخته شد — API Key: $apiKey — لینک توکن امن: ".APP_URL."/token.php?t=[از ربات فروش بگیرید]";
+            } catch (Throwable $e){ $msg='خطا: '.htmlspecialchars($e->getMessage());$msgErr=true; }
         }
-    } elseif ($action==='toggle') {
-        $id=(int)($_POST['id']??0); $new=$_POST['new_status']??'active';
+    } elseif ($action==='status') {
+        $id=(int)($_POST['id']??0); $new=normalize_status($_POST['new_status']??'ACTIVE');
         $pdo->prepare("UPDATE customers SET status=? WHERE id=?")->execute([$new,$id]);
-        sec_log('customer_status',(int)$me['id'],['target'=>$id,'status'=>$new]);
-        $msg="وضعیت به $new تغییر کرد.";
+        admin_log((int)$me['id'],'customer_status_change','customer',$id,['new_status'=>$new]);
+        $msg="وضعیت مشتری #$id به $new تغییر کرد.";
+        // اگر DISABLED/SUSPENDED، تمام api_keys غیرفعال؟ نه، فقط status چک می‌شود
+        // ولی برای قطع فوری دسترسی دستگاه‌ها: is_active devices را هم می‌توان false کرد — اختیاری
+        if($new===STATUS_DISABLED || $new===STATUS_SUSPENDED){
+            $pdo->prepare("UPDATE devices SET is_active=0 WHERE customer_id=?")->execute([$id]);
+        } elseif($new===STATUS_ACTIVE){
+            $pdo->prepare("UPDATE devices SET is_active=1 WHERE customer_id=?")->execute([$id]);
+        }
     } elseif ($action==='delete') {
         $id=(int)($_POST['id']??0);
-        if ($id!==(int)$me['id']) { $pdo->prepare("DELETE FROM customers WHERE id=?")->execute([$id]); $msg="حذف شد."; sec_log('customer_deleted',(int)$me['id'],['target'=>$id]); } else $msg='خودتان را نمی‌توانید حذف کنید.';
+        if ($id===(int)$me['id']) {$msg='خودتان را نمی‌توانید حذف کنید.';$msgErr=true;}
+        else { $pdo->prepare("DELETE FROM customers WHERE id=?")->execute([$id]); admin_log((int)$me['id'],'customer_deleted','customer',$id,[]); $msg="حذف شد."; }
+    } elseif ($action==='disconnect_bot') {
+        $id=(int)($_POST['id']??0);
+        $pdo->prepare("UPDATE telegram_bots SET is_connected=0 WHERE customer_id=?")->execute([$id]);
+        admin_log((int)$me['id'],'bot_disconnected','bot',$id,[]);
+        $msg="ربات مشتری #$id قطع شد.";
+    } elseif ($action==='block_device') {
+        $did=(int)($_POST['device_id']??0);
+        $pdo->prepare("UPDATE devices SET is_active=0 WHERE id=?")->execute([$did]);
+        admin_log((int)$me['id'],'device_blocked','device',$did,[]);
+        $msg="دستگاه #$did مسدود شد.";
     }
 }
-$rows=$pdo->query("SELECT id,uuid,email,name,status,created_at FROM customers ORDER BY id DESC")->fetchAll();
+$q=sanitize_string($_GET['q']??'',100);
+if($q!==''){
+    $stmt=$pdo->prepare("SELECT id,uuid,email,name,status,telegram_id,created_at FROM customers WHERE email LIKE ? OR name LIKE ? ORDER BY id DESC");
+    $like="%$q%"; $stmt->execute([$like,$like]);
+} else {
+    $stmt=$pdo->query("SELECT id,uuid,email,name,status,telegram_id,created_at FROM customers ORDER BY id DESC");
+}
+$rows=$stmt->fetchAll();
 ?>
 <!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>مشتریان</title>
-<style>*{box-sizing:border-box}body{font-family:Vazirmatn,Tahoma,sans-serif;background:#0f172a;color:#e2e8f0;margin:0}.nav{background:#1e293b;padding:12px 24px;display:flex;gap:12px}.nav a{color:#94a3b8;text-decoration:none;padding:8px 12px;border-radius:8px}.nav a.active{background:#334155;color:#e2e8f0}.wrap{max-width:1100px;margin:24px auto;padding:0 16px}.card{background:#1e293b;border-radius:12px;padding:16px;margin-bottom:16px}table{width:100%;border-collapse:collapse}th,td{padding:8px;text-align:right;border-bottom:1px solid #334155;font-size:13px}input,select{padding:8px;border-radius:6px;border:1px solid #334155;background:#0f172a;color:#e2e8f0}button{padding:8px 12px;border-radius:6px;border:0;cursor:pointer}.btn2{background:#22c55e;color:#052e16;font-weight:700}.btn3{background:#7f1d1d;color:#fecaca}</style>
+<style>*{box-sizing:border-box}body{font-family:Vazirmatn,Tahoma,sans-serif;background:#0f172a;color:#e2e8f0;margin:0}.nav{background:#1e293b;padding:12px 24px;display:flex;gap:10px;flex-wrap:wrap}.nav a{color:#94a3b8;text-decoration:none;padding:8px 10px;border-radius:8px;font-size:13px}.nav a.active{background:#334155;color:#e2e8f0}.wrap{max-width:1200px;margin:24px auto;padding:0 16px}.card{background:#1e293b;border-radius:12px;padding:16px;margin-bottom:16px}table{width:100%;border-collapse:collapse}th,td{padding:8px;text-align:right;border-bottom:1px solid #334155;font-size:12px}input,select{padding:8px;border-radius:6px;border:1px solid #334155;background:#0f172a;color:#e2e8f0}button{padding:7px 10px;border-radius:6px;border:0;cursor:pointer;font-size:12px}.btn2{background:#22c55e;color:#052e16;font-weight:700}.btn3{background:#7f1d1d;color:#fecaca}</style>
 </head><body>
-<div class="nav"><b><?=htmlspecialchars(APP_NAME)?></b><a href="index.php">داشبورد</a><a class="active" href="customers.php">مشتریان</a><a href="bots.php">ربات‌ها</a><a href="devices.php">دستگاه‌ها</a><a href="settings.php">تنظیمات</a></div>
+<div class="nav"><b><?=htmlspecialchars(APP_NAME)?></b><a href="index.php">داشبورد</a><a class="active" href="customers.php">مشتریان</a><a href="wallets.php">کیف پول</a><a href="payments.php">پرداخت‌ها</a><a href="orders.php">سفارش‌ها</a><a href="bots.php">ربات‌ها</a><a href="devices.php">دستگاه‌ها</a><a href="apk.php">APK</a><a href="settings.php">تنظیمات</a></div>
 <div class="wrap">
-<h1>مدیریت مشتریان</h1>
-<?php if($msg): ?><div class="card" style="background:#14532d;color:#bbf7d0"><?=$msg?></div><?php endif; ?>
+<h1>مدیریت مشتریان — وضعیت مستقل</h1>
+<?php if($msg): ?><div class="card" style="background:<?=$msgErr?'#7f1d1d':'#14532d'?>"><?=htmlspecialchars($msg)?></div><?php endif; ?>
 <div class="card">
 <h3>افزودن مشتری جدید</h3>
 <form method="post"><input type="hidden" name="action" value="add">
 <input name="email" placeholder="ایمیل" required> <input name="name" placeholder="نام">
 <input type="password" name="password" placeholder="رمز عبور (حداقل ۸)" required>
-<select name="status"><option value="active">فعال</option><option value="blocked">مسدود</option><option value="pending">در انتظار</option></select>
+<select name="status"><option value="ACTIVE">ACTIVE فعال</option><option value="SUSPENDED">SUSPENDED تعلیق</option><option value="DISABLED">DISABLED غیرفعال</option></select>
 <button class="btn2" type="submit">افزودن</button>
 </form>
-<p style="font-size:12px;color:#94a3b8">هر مشتری UUID و API Key اختصاصی می‌گیرد. API Key را به APK بدهید (هرگز توکن ربات را در APK نگذارید).</p>
+<p style="font-size:11px;color:#94a3b8">ACTIVE: دسترسی کامل | SUSPENDED: فقط مشاهده (API مسدود) | DISABLED: قطع کامل. تغییر وضعیت از طریق سرور مرکزی انجام می‌شود.</p>
 </div>
 <div class="card">
-<table><tr><th>ID</th><th>UUID</th><th>ایمیل / نام</th><th>وضعیت</th><th>تاریخ</th><th>عملیات</th></tr>
-<?php foreach($rows as $r): ?>
+<form method="get"><input name="q" placeholder="جستجو ایمیل/نام" value="<?=htmlspecialchars($q)?>"><button>جستجو</button> <a href="customers.php" style="color:#38bdf8">نمایش همه</a></form>
+</div>
+<div class="card" style="overflow:auto">
+<table><tr><th>ID</th><th>ایمیل / نام / تلگرام</th><th>وضعیت</th><th>کیف پول</th><th>دستگاه/ربات</th><th>عملیات دسترسی</th></tr>
+<?php foreach($rows as $r):
+ $w=$pdo->prepare("SELECT balance FROM wallets WHERE customer_id=?"); $w->execute([$r['id']]); $bal=$w->fetchColumn();
+ $dc=$pdo->prepare("SELECT COUNT(*) FROM devices WHERE customer_id=?"); $dc->execute([$r['id']]); $dcc=(int)$dc->fetchColumn();
+ $bc=$pdo->prepare("SELECT COUNT(*) FROM telegram_bots WHERE customer_id=?"); $bc->execute([$r['id']]); $bcc=(int)$bc->fetchColumn();
+ $status=$r['status']; $color=$status==='ACTIVE'?'#22c55e':($status==='SUSPENDED'?'#f59e0b':'#ef4444');
+?>
 <tr>
-<td><?=$r['id']?></td><td><code style="font-size:11px"><?=htmlspecialchars(substr($r['uuid'],0,8))?>…</code></td>
-<td><?=htmlspecialchars($r['email'])?><br><small style="color:#94a3b8"><?=htmlspecialchars($r['name'])?></small></td>
-<td><?=$r['status']==='active'?'✅ فعال':($r['status']==='blocked'?'⛔ مسدود':'⏳ انتظار')?></td>
-<td><?=htmlspecialchars($r['created_at'])?></td>
-<td>
-<form method="post" style="display:inline"><input type="hidden" name="action" value="toggle"><input type="hidden" name="id" value="<?=$r['id']?>"><input type="hidden" name="new_status" value="<?=$r['status']==='active'?'blocked':'active'?>"><button type="submit" style="background:#334155;color:#e2e8f0"><?= $r['status']==='active'?'مسدود':'فعال'?></button></form>
-<form method="post" style="display:inline" onsubmit="return confirm('حذف؟')"><input type="hidden" name="action" value="delete"><input type="hidden" name="id" value="<?=$r['id']?>"><button class="btn3" type="submit">حذف</button></form>
+<td><?=$r['id']?><br><code style="font-size:10px"><?=htmlspecialchars(substr($r['uuid'],0,8))?>…</code></td>
+<td><?=htmlspecialchars($r['email'])?><br><small style="color:#94a3b8"><?=htmlspecialchars($r['name'])?> | tg:<?=htmlspecialchars($r['telegram_id']??'—')?></small></td>
+<td><span style="background:<?=$color?>;color:#000;padding:2px 8px;border-radius:10px;font-weight:700;font-size:11px"><?=$status?></span></td>
+<td><?=number_format((int)($bal?:0))?></td>
+<td>📱<?=$dcc?> 🤖<?=$bcc?></td>
+<td style="display:flex;gap:4px;flex-wrap:wrap">
+<form method="post"><input type="hidden" name="action" value="status"><input type="hidden" name="id" value="<?=$r['id']?>"><select name="new_status"><option value="ACTIVE" <?=$status==='ACTIVE'?'selected':''?>>ACTIVE</option><option value="SUSPENDED" <?=$status==='SUSPENDED'?'selected':''?>>SUSPENDED</option><option value="DISABLED" <?=$status==='DISABLED'?'selected':''?>>DISABLED</option></select><button style="background:#334155;color:#e2e8f0">اعمال</button></form>
+<form method="post"><input type="hidden" name="action" value="disconnect_bot"><input type="hidden" name="id" value="<?=$r['id']?>"><button style="background:#f59e0b;color:#000">قطع ربات</button></form>
+<a href="wallets.php?customer_id=<?=$r['id']?>" style="background:#38bdf8;color:#082f49;padding:6px 8px;border-radius:6px;text-decoration:none;font-size:11px">کیف پول</a>
+<a href="bots.php?customer_id=<?=$r['id']?>" style="background:#334155;color:#e2e8f0;padding:6px 8px;border-radius:6px;text-decoration:none;font-size:11px">ربات</a>
+<form method="post" onsubmit="return confirm('حذف؟')"><input type="hidden" name="action" value="delete"><input type="hidden" name="id" value="<?=$r['id']?>"><button class="btn3">حذف</button></form>
 </td>
 </tr>
 <?php endforeach; ?>

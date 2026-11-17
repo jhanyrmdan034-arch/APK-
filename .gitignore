@@ -16,3 +16,10 @@ central/private/logs/
 *.zip
 *.apk
 !tools/*.apk
+# Private storage — keep structure, ignore contents
+central/private/apk/*
+!central/private/apk/.gitkeep
+central/private/uploads/*
+!central/private/uploads/.gitkeep
+central/private/backups/*
+!central/private/backups/.gitkeep

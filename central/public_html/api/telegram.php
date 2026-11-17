@@ -21,7 +21,21 @@ if ($bearer && preg_match('/^[a-f0-9]{64}$/i', $bearer)) {
 if (!$customer) json_out(['ok'=>false,'error'=>'Unauthorized'],401);
 
 $cid = (int)$customer['id'];
+// بررسی وضعیت دسترسی — SUSPENDED/DISABLED اجازه پروکسی ندارند
+if (normalize_status($customer['status']) !== STATUS_ACTIVE) {
+    json_out(['ok'=>false,'error'=>'Account '.normalize_status($customer['status']).' — telegram proxy blocked'],403);
+}
 if (!check_rate_limit((string)$cid, 'telegram_proxy')) json_out(['ok'=>false,'error'=>'Rate limit'],429);
+// بررسی مسدود بودن دستگاه خاص
+$deviceIdCheck = $_SERVER['HTTP_X_DEVICE_ID'] ?? ($_POST['device_id'] ?? null) ?? (json_decode(file_get_contents('php://input'),true)['device_id'] ?? null);
+if ($deviceIdCheck) {
+    $chk = db()->prepare("SELECT is_active FROM devices WHERE customer_id=? AND device_id=? LIMIT 1");
+    $chk->execute([$cid, sanitize_string((string)$deviceIdCheck,128)]);
+    $drow = $chk->fetch();
+    if ($drow && (int)$drow['is_active']===0) {
+        json_out(['ok'=>false,'error'=>'Device blocked by admin'],403);
+    }
+}
 
 $method = $_SERVER['REQUEST_METHOD'];
 if ($method !== 'POST') json_out(['ok'=>false,'error'=>'Method not allowed'],405);
