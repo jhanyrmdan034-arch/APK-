@@ -1,0 +1,4 @@
+# Allow HTML only, deny PHP execution
+<FilesMatch "\.php$">
+Require all denied
+</FilesMatch>

