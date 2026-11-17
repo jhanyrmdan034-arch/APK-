@@ -141,7 +141,7 @@ $recentDeliveries=$pdo->query("SELECT d.id, d.delivery_token, d.api_key, d.downl
 <?php if($result): ?>
 <div class="card" style="border:2px solid #22c55e">
 <h3 style="color:#22c55e">✅ مشتری و بسته تحویل ساخته شد</h3>
-<p>👤 نام کاربری: <b><?=htmlspecialchars($result['customer']['name'])?> (#<?=$result['customer']['id']?>)</b> — ربات: <b>@<?=htmlspecialchars($result['bot_username'])?></b> (ID: <?=htmlspecialchars($result['bot_id']??'—')?>)</p>
+<p>👤 نام کاربری: <b><?=htmlspecialchars($result['customer']['name'])?></b> — ربات: <b>@<?=htmlspecialchars($result['bot_username'])?></b></p>
 <p>APK: <?=htmlspecialchars($result['apk']['version'])?> — <?=htmlspecialchars($result['apk']['file_name'])?> (<?=round($result['apk']['file_size']/1024/1024,2)?> MB)</p>
 <p>سفارش: #<?=htmlspecialchars($result['order_id'])?></p>
 <p>🔗 <b>لینک دانلود اختصاصی:</b><br><code><?=htmlspecialchars($result['url'])?></code></p>
