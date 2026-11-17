@@ -14,8 +14,8 @@ ALTER TABLE `customers` MODIFY `password_hash` VARCHAR(255) NULL DEFAULT NULL CO
 -- MySQL 8: DROP INDEX IF EXISTS پشتیبانی می‌شود
 -- برای سازگاری، تلاش می‌کنیم؛ اگر خطا داد نادیده گرفته می‌شود
 -- (در اجرای دستی اگر خطا داد، دستی DROP کنید)
--- سعی اول: اگر ایندکس وجود دارد حذف کن
-ALTER TABLE `customers` DROP INDEX `uniq_email`;
+-- سعی اول: اگر ایندکس وجود دارد حذف کن (IF EXISTS برای اجرای دوباره)
+ALTER TABLE `customers` DROP INDEX IF EXISTS `uniq_email`;
 
 -- 3) نام‌های خالی را یکتا کن تا بتوانیم UNIQUE روی name بگذاریم
 UPDATE `customers` SET `name` = CONCAT('user_', `id`) WHERE `name` = '' OR `name` IS NULL;

@@ -114,13 +114,14 @@ function import_sql_file(PDO $pdo, string $file): array {
                 $pdo->exec($stmt);
                 $count++;
             }catch(PDOException $e){
-                // ignore duplicate / already exists errors, but report others
                 $msg = $e->getMessage();
-                if(stripos($msg, 'Duplicate') !== false || stripos($msg, 'already exists') !== false || stripos($msg, 'Duplicate key') !== false){
+                // ignore already exists / duplicate / index not exists (for re-runs)
+                if(stripos($msg, 'Duplicate') !== false || stripos($msg, 'already exists') !== false || stripos($msg, 'Duplicate key') !== false
+                    || stripos($msg, 'Duplicate column') !== false
+                    || stripos($msg, "Can't DROP") !== false || strpos($msg, '1091') !== false
+                    || stripos($msg, 'check that it exists') !== false){
                     continue;
                 }
-                // For ALTER TABLE errors on re-run, ignore if column exists
-                if(stripos($msg, 'Duplicate column') !== false) continue;
                 return ['ok'=>false,'error'=>"خطا در اجرای SQL: " . $msg . "\n---\n" . substr($stmt,0,500)];
             }
         }
