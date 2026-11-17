@@ -8,16 +8,24 @@
 - `docs/` → مستندات فارسی
 - `private/config/config.sample.php` → کپی به `config.php` و پر کنید (DB, ENCRYPTION_KEY_B64, APP_URL)
 
-## نصب سریع (بدون ربات فروش)
-1. در phpMyAdmin به‌ترتیب Import کنید: `private/database/schema.sql` → `migration_v2_sales_platform.sql` → `migration_v3_simplify_customer.sql` (ساده‌سازی: نام کاربری یکتا، بدون ایمیل/رمز، حفظ اطلاعات قبلی)
-2. `private/config/config.sample.php` را به `config.php` کپی و `DB_*`, `ENCRYPTION_KEY_B64` (`openssl rand -base64 32`), `APP_URL` را پر کنید
-3. `public_html` را به `public_html` هاست و `private` را خارج از آن قرار دهید (هرگز `private` داخل `public_html` نگذارید)
+## نصب فوق‌سریع (توصیه می‌شود — نصاب تحت وب)
+> **فقط آپلود + یک صفحه — بدون تنظیم دستی**
+1. فایل `BABARPHANTOM_HOST_READY.zip` را در **File Manager → Home (`/home/username`) → Upload → Extract** کن (خودکار `public_html` + `private` سر جایش می‌رود)
+2. برو `https://HOST/install.php` → فرم را پر کن: **هاست/نام/یوزر/پسورد دیتابیس** (از cPanel → MySQL Databases) + **آدرس سایت** + **رمز مدیر** → بزن **ساخت خودکار**
+   - نصاب خودش جدول‌ها را می‌سازد (`schema`+`migration_v2`+`migration_v3`) + `config.php` با کلیدهای تصادفی + پوشه‌ها را می‌سازد
+3. بعد از ✅، **حذف `install.php`** را بزن و برو `https://HOST/admin/` → `admin@local` + رمزی که گذاشتی
+4. ادامه: APK در `admin/apk.php`، قالب در `admin/template.php`، ساخت مشتری در `admin/delivery_builder.php` (فقط نام کاربری + توکن)
+
+## نصب دستی (بدون نصاب — قدیمی)
+1. در phpMyAdmin به‌ترتیب Import کنید: `private/database/schema.sql` → `migration_v2_sales_platform.sql` → `migration_v3_simplify_customer.sql`
+2. `private/config/config.sample.php` را به `config.php` کپی و `DB_*`, `ENCRYPTION_KEY_B64`, `APP_URL` را پر کنید
+3. `public_html` را به `public_html` هاست و `private` را خارج از آن قرار دهید
 4. مجوز: `700 private/telegram_tokens private/logs private/backups private/templates`, `750 private/apk private/uploads public_html/templates`, `640 private/config/config.php`
-5. ورود: `https://HOST/admin/` → `admin@local / Admin123!` → از تنظیمات رمز را عوض کنید (ورود مدیر با ایمیل/رمز مستقل، امن)
+5. ورود: `https://HOST/admin/` → `admin@local / Admin123!`
 6. کرون: `0 3 * * * php /home/username/private/scripts/backup.php`
-7. APK را در `admin/apk.php` آپلود کنید (فقط یکی فعال)
-8. قالب دلخواه (اختیاری): `admin/template.php` → فایل `.html` آپلود → طرح داخل برنامه دقیقاً مثل همون می‌شود (ذخیره در `public_html/templates/custom.html` + `private/templates/custom.html`، `webview_url` خودکار)
-9. ساخت مشتری: `admin/delivery_builder.php` → فقط **نام کاربری + توکن ربات** → اعتبارسنجی `getMe` → ذخیره رمزنگاری `AES-256-GCM` → بسته تحویل (`delivery_token`+`api_key` اختصاصی، 30 روز) — بدون ایمیل/رمز
+7. APK را در `admin/apk.php` آپلود کنید
+8. قالب دلخواه: `admin/template.php` → `.html` آپلود
+9. ساخت مشتری: `admin/delivery_builder.php` → فقط نام کاربری + توکن
 
 مستندات کامل: `docs/INSTALL_HOST_GUIDE.md` (مرحله‌به‌مرحله فارسی، مطابق نسخه نهایی)
 
