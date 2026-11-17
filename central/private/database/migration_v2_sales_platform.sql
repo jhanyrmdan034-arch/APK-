@@ -13,7 +13,7 @@ UPDATE `customers` SET `status`='ACTIVE'   WHERE `status`='active';
 UPDATE `customers` SET `status`='DISABLED' WHERE `status`='blocked';
 UPDATE `customers` SET `status`='SUSPENDED' WHERE `status`='pending';
 ALTER TABLE `customers` MODIFY COLUMN `status` ENUM('ACTIVE','SUSPENDED','DISABLED') NOT NULL DEFAULT 'ACTIVE';
-ALTER TABLE `customers` ADD COLUMN `telegram_id` BIGINT UNSIGNED DEFAULT NULL COMMENT 'Telegram user id (sales bot)' AFTER `name`;
+ALTER TABLE `customers` ADD COLUMN `telegram_id` BIGINT UNSIGNED DEFAULT NULL COMMENT 'Telegram user id (کنترل/گزارش‌ده)' AFTER `name`;
 ALTER TABLE `customers` ADD COLUMN `phone` VARCHAR(32) DEFAULT NULL AFTER `telegram_id`;
 ALTER TABLE `customers` ADD COLUMN `telegram_username` VARCHAR(64) DEFAULT NULL AFTER `phone`;
 ALTER TABLE `customers` ADD UNIQUE KEY `uniq_telegram_id` (`telegram_id`);
@@ -157,7 +157,7 @@ CREATE TABLE IF NOT EXISTS `token_forms` (
   CONSTRAINT `fk_tf_customer` FOREIGN KEY (`customer_id`) REFERENCES `customers`(`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- 10) Sales bot sessions (وضعیت گفتگو هر کاربر تلگرام فروش)
+-- 10) Sales sessions (منسوخ پس از حذف ربات فروش — برای سازگاری باقی مانده، استفاده نمی‌شود)
 CREATE TABLE IF NOT EXISTS `sales_sessions` (
   `telegram_id` BIGINT NOT NULL,
   `customer_id` INT UNSIGNED DEFAULT NULL,
@@ -185,10 +185,8 @@ CREATE TABLE IF NOT EXISTS `admin_logs` (
 -- 12) Ensure wallets for existing customers
 INSERT IGNORE INTO `wallets` (`customer_id`,`balance`) SELECT `id`,0 FROM `customers`;
 
--- 13) Settings additions
+-- 13) Settings additions (sales_bot حذف شده — فقط تنظیمات عمومی/پرداخت/پشتیبانی)
 INSERT INTO `settings` (`k`,`v`) VALUES
-('sales_bot_token',''),
-('sales_bot_username',''),
 ('card_number','6037-xxxx-xxxx-xxxx'),
 ('card_holder','BABARPHANTOM'),
 ('support_telegram','@support'),

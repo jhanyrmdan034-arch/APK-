@@ -50,10 +50,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
         $form=create_token_form($cid);
         $msg="🔐 لینک امن ایجاد شد (".TOKEN_FORM_TTL_MINUTES." دقیقه): ".$form['url'];
         admin_log((int)$me['id'],'token_form_created','customer',$cid,['token'=>substr($form['token'],0,8).'...']);
-        if(SALES_BOT_TOKEN){
-            $tg=$pdo->prepare("SELECT telegram_id FROM customers WHERE id=?"); $tg->execute([$cid]); $tid=$tg->fetchColumn();
-            if($tid) sales_bot_send('sendMessage',['chat_id'=>$tid,'text'=>"🔐 لینک امن ثبت توکن (".TOKEN_FORM_TTL_MINUTES." دقیقه):\n".$form['url']]);
-        }
+
     } elseif ($act==='disconnect') {
         $pdo->prepare("UPDATE telegram_bots SET is_connected=0 WHERE customer_id=?")->execute([$cid]);
         admin_log((int)$me['id'],'bot_disconnected','bot',$cid,[]);
@@ -86,7 +83,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
 }
 
 $s=$pdo->prepare("SELECT id, bot_username, is_connected, last_checked_at, last_error, created_at FROM telegram_bots WHERE customer_id=? LIMIT 1"); $s->execute([$cid]); $bot=$s->fetch();
-$targetEmail = $pdo->prepare("SELECT COALESCE(name,email) FROM customers WHERE id=?"); $targetEmail->execute([$cid]); $targetEmail=$targetEmail->fetchColumn();
+$targetEmail = $pdo->prepare("SELECT name FROM customers WHERE id=?"); $targetEmail->execute([$cid]); $targetEmail=$targetEmail->fetchColumn();
 $targetStatus = $pdo->prepare("SELECT status FROM customers WHERE id=?"); $targetStatus->execute([$cid]); $targetStatus=$targetStatus->fetchColumn();
 ?>
 <!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ربات‌ها</title>
@@ -97,7 +94,7 @@ $targetStatus = $pdo->prepare("SELECT status FROM customers WHERE id=?"); $targe
 <h1>مدیریت ربات تلگرام</h1>
 <?php if($isAdmin): ?>
 <div class="card"><form method="get">انتخاب مشتری: <select name="customer_id" onchange="this.form.submit()">
-<?php $cs=$pdo->query("SELECT id,email,status FROM customers ORDER BY id"); foreach($cs as $c) echo '<option value="'.$c['id'].'"'.($c['id']==$cid?' selected':'').'>'.htmlspecialchars($c['email'])." [{$c['status']}] (#$c[id])</option>"; ?>
+<?php $cs=$pdo->query("SELECT id,name,status FROM customers ORDER BY id"); foreach($cs as $c) echo '<option value="'.$c['id'].'"'.($c['id']==$cid?' selected':'').'>'.htmlspecialchars($c['name'])." [{$c['status']}] (#$c[id])</option>"; ?>
 </select> <noscript><button>برو</button></noscript></form></div>
 <?php endif; ?>
 <p>مشتری: <b><?=htmlspecialchars($targetEmail)?></b> (#<?=$cid?>) — وضعیت: <b><?=htmlspecialchars($targetStatus)?></b></p>

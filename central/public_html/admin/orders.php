@@ -23,9 +23,7 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
                     $msg="سفارش #$id تحویل شد — لینک: ".APP_URL."/api/delivery.php?t=".$dl['token'];
                     // ارسال به تلگرام اگر telegram_id دارد
                     $tg=$pdo->prepare("SELECT telegram_id FROM customers WHERE id=?"); $tg->execute([$o['customer_id']]); $tid=$tg->fetchColumn();
-                    if($tid && SALES_BOT_TOKEN){
-                        sales_bot_send('sendMessage',['chat_id'=>$tid,'text'=>"📦 سفارش #$id تحویل شد!\n📥 دانلود: ".APP_URL."/api/delivery.php?t=".$dl['token']]);
-                    }
+                    // اطلاع‌رسانی تحویل (ربات فروش حذف شده — لینک دستی)
                 }
             }
         }
@@ -39,9 +37,9 @@ $filter=$_GET['status']??'all';
 $allowed=['pending','paid','delivered','cancelled','all'];
 if(!in_array($filter,$allowed,true)) $filter='all';
 if($filter==='all'){
-    $rows=$pdo->query("SELECT o.*, c.name, c.email FROM orders o JOIN customers c ON c.id=o.customer_id ORDER BY o.id DESC LIMIT 100")->fetchAll();
+    $rows=$pdo->query("SELECT o.*, c.name FROM orders o JOIN customers c ON c.id=o.customer_id ORDER BY o.id DESC LIMIT 100")->fetchAll();
 } else {
-    $stmt=$pdo->prepare("SELECT o.*, c.name, c.email FROM orders o JOIN customers c ON c.id=o.customer_id WHERE o.status=? ORDER BY o.id DESC LIMIT 100");
+    $stmt=$pdo->prepare("SELECT o.*, c.name FROM orders o JOIN customers c ON c.id=o.customer_id WHERE o.status=? ORDER BY o.id DESC LIMIT 100");
     $stmt->execute([$filter]); $rows=$stmt->fetchAll();
 }
 ?>
@@ -65,7 +63,7 @@ if($filter==='all'){
 ?>
 <tr>
 <td>#<?=$r['id']?></td>
-<td><?=htmlspecialchars($r['name']?: $r['email'])?></td>
+<td><?=htmlspecialchars($r['name']?: '—')?></td>
 <td><?=htmlspecialchars($r['product_code'])?></td>
 <td><?=number_format($r['amount'])?></td>
 <td><?=$r['status']?></td>

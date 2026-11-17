@@ -166,7 +166,7 @@ function authenticate_apk(): array {
         json_out(['ok' => false, 'error' => 'Rate limit exceeded'], 429);
     }
     $pdo = db();
-    $stmt = $pdo->prepare("SELECT c.id, c.uuid, c.email, c.status, k.id as key_id FROM api_keys k JOIN customers c ON c.id=k.customer_id WHERE k.api_key=? AND k.is_active=1 LIMIT 1");
+    $stmt = $pdo->prepare("SELECT c.id, c.uuid, c.email, c.name, c.status, k.id as key_id FROM api_keys k JOIN customers c ON c.id=k.customer_id WHERE k.api_key=? AND k.is_active=1 LIMIT 1");
     $stmt->execute([$apiKey]);
     $row = $stmt->fetch();
     if (!$row) {
@@ -289,17 +289,6 @@ function get_active_apk(): ?array {
     return $r?:null;
 }
 
-// --- Sales bot helpers ---
-function sales_bot_send(string $method, array $params): ?array {
-    if (!SALES_BOT_TOKEN) return null;
-    $url = TELEGRAM_API_BASE . SALES_BOT_TOKEN . '/' . $method;
-    $ch=curl_init($url);
-    curl_setopt_array($ch,[CURLOPT_RETURNTRANSFER=>true,CURLOPT_POST=>true,CURLOPT_POSTFIELDS=>http_build_query($params),CURLOPT_TIMEOUT=>15]);
-    $resp=curl_exec($ch); $code=curl_getinfo($ch,CURLINFO_HTTP_CODE); curl_close($ch);
-    if($resp===false) return null;
-    $j=json_decode($resp,true);
-    return $j;
-}
 function ensure_customer_for_telegram(int $tgId, string $username='', string $firstName=''): array {
     $pdo=db();
     $stmt=$pdo->prepare("SELECT * FROM customers WHERE telegram_id=? LIMIT 1");
@@ -311,9 +300,8 @@ function ensure_customer_for_telegram(int $tgId, string $username='', string $fi
         }
         return $c;
     }
-    // create new customer with random email (برای سازگاری)
+    // create new customer without email/password — only username (v3)
     $uuid=generate_uuid();
-    $email="tg_{$tgId}@sales.local";
     $baseName=$firstName ?: $username ?: "کاربر_$tgId";
     $name=$baseName;
     // یکتاسازی نام کاربری
@@ -325,9 +313,9 @@ function ensure_customer_for_telegram(int $tgId, string $username='', string $fi
         $i++; $name=$baseName.'_'.$i;
         if($i>99) { $name=$baseName.'_'.$tgId; break; }
     }
-    $hash=password_hash(bin2hex(random_bytes(16)), PASSWORD_BCRYPT, ['cost'=>BCRYPT_COST]);
+    // ایمیل و رمز برای مشتری عادی NULL — فقط ادمین email/password دارد
     $pdo->prepare("INSERT INTO customers (uuid,email,password_hash,name,status,telegram_id,telegram_username) VALUES (?,?,?,?,?,?,?)")
-        ->execute([$uuid,$email,$hash,$name,STATUS_ACTIVE,$tgId,$username]);
+        ->execute([$uuid,null,null,$name,STATUS_ACTIVE,$tgId,$username]);
     $id=(int)$pdo->lastInsertId();
     $pdo->prepare("INSERT INTO wallets (customer_id,balance) VALUES (?,0)")->execute([$id]);
     $apiKey=generate_api_key();

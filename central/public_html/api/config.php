@@ -39,7 +39,7 @@ json_out([
     'ok' => true,
     'customer' => [
         'uuid' => $customer['uuid'],
-        'email' => $customer['email'],
+        'name' => $customer['name'] ?? $customer['uuid'],
     ],
     'bot' => $bot ? [
         'username' => $bot['bot_username'],

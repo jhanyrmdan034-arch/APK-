@@ -46,10 +46,10 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
 }
 $q=sanitize_string($_GET['q']??'',100);
 if($q!==''){
-    $stmt=$pdo->prepare("SELECT id,uuid,email,name,status,telegram_id,created_at FROM customers WHERE name LIKE ? OR email LIKE ? ORDER BY id DESC");
-    $like="%$q%"; $stmt->execute([$like,$like]);
+    $stmt=$pdo->prepare("SELECT id,uuid,name,status,telegram_id,created_at FROM customers WHERE name LIKE ? ORDER BY id DESC");
+    $like="%$q%"; $stmt->execute([$like]);
 } else {
-    $stmt=$pdo->query("SELECT id,uuid,email,name,status,telegram_id,created_at FROM customers ORDER BY id DESC");
+    $stmt=$pdo->query("SELECT id,uuid,name,status,telegram_id,created_at FROM customers ORDER BY id DESC");
 }
 $rows=$stmt->fetchAll();
 ?>
@@ -83,7 +83,7 @@ $rows=$stmt->fetchAll();
 ?>
 <tr>
 <td><?=$r['id']?><br><code style="font-size:10px"><?=htmlspecialchars(substr($r['uuid'],0,8))?>…</code></td>
-<td><b><?=htmlspecialchars($displayName)?></b><br><small style="color:#94a3b8">tg:<?=htmlspecialchars($r['telegram_id']??'—')?> <?php if(!empty($r['email'])) echo ' | '.htmlspecialchars($r['email']); ?></small></td>
+<td><b><?=htmlspecialchars($displayName)?></b><br><small style="color:#94a3b8">tg:<?=htmlspecialchars($r['telegram_id']??'—')?></small></td>
 <td><span style="background:<?=$color?>;color:#000;padding:2px 8px;border-radius:10px;font-weight:700;font-size:11px"><?=$status?></span></td>
 <td><?=number_format((int)($bal?:0))?></td>
 <td>📱<?=$dcc?> 🤖<?=$bcc?></td>

@@ -136,7 +136,6 @@ code{background:#0f172a;padding:2px 6px;border-radius:4px}
 <h3>وضعیت سیستم</h3>
 <p><a class="btn" href="../api/status.php" target="_blank">بررسی سلامت API</a> <a class="btn" href="<?=htmlspecialchars(APP_URL)?>/token.php?t=test" target="_blank">تست فرم توکن</a></p>
 <?php $ch = $pdo->query("SELECT v FROM settings WHERE k='maintenance'")->fetchColumn(); echo $ch==='1' ? '<p style="color:#f87171">⚠️ حالت تعمیر فعال است.</p>' : '<p style="color:#22c55e">✅ سیستم فعال است.</p>'; ?>
-<p style="font-size:12px;color:#94a3b8">ربات فروش: <code><?=htmlspecialchars(SALES_BOT_USERNAME ?: 'تنظیم نشده')?></code> | وب‌هوک: <code><?=htmlspecialchars(APP_URL)?>/api/sales_webhook.php</code></p>
 </div>
 
 <?php if($isAdmin): ?>
@@ -163,7 +162,7 @@ code{background:#0f172a;padding:2px 6px;border-radius:4px}
 </div>
 
 <?php if($isAdmin): 
-$recent=$pdo->query("SELECT COALESCE(c.name,c.email) as display_name, p.amount, p.status, p.created_at FROM payment_requests p JOIN customers c ON c.id=p.customer_id ORDER BY p.id DESC LIMIT 5")->fetchAll();
+$recent=$pdo->query("SELECT c.name as display_name, p.amount, p.status, p.created_at FROM payment_requests p JOIN customers c ON c.id=p.customer_id ORDER BY p.id DESC LIMIT 5")->fetchAll();
 if($recent): ?>
 <div class="card"><h3>آخرین پرداخت‌ها</h3><table style="width:100%;font-size:12px;border-collapse:collapse"><tr style="color:#94a3b8"><th>مشتری</th><th>مبلغ</th><th>وضعیت</th><th>تاریخ</th></tr>
 <?php foreach($recent as $r): ?><tr style="border-top:1px solid #334155"><td><?=htmlspecialchars($r['display_name'])?></td><td><?=number_format($r['amount'])?></td><td><?=$r['status']?></td><td><?=htmlspecialchars($r['created_at'])?></td></tr><?php endforeach; ?>

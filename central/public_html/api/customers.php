@@ -27,15 +27,14 @@ try {
         $q = sanitize_string($_GET['q'] ?? '', 100);
 
         if ($q !== '') {
-            $stmt = $pdo->prepare("SELECT id, uuid, email, name, status, created_at FROM customers WHERE email LIKE ? OR name LIKE ? ORDER BY id DESC LIMIT ? OFFSET ?");
+            $stmt = $pdo->prepare("SELECT id, uuid, name, status, created_at FROM customers WHERE name LIKE ? ORDER BY id DESC LIMIT ? OFFSET ?");
             $like = "%$q%";
             $stmt->bindValue(1, $like);
-            $stmt->bindValue(2, $like);
-            $stmt->bindValue(3, $per, PDO::PARAM_INT);
-            $stmt->bindValue(4, $offset, PDO::PARAM_INT);
+            $stmt->bindValue(2, $per, PDO::PARAM_INT);
+            $stmt->bindValue(3, $offset, PDO::PARAM_INT);
             $stmt->execute();
         } else {
-            $stmt = $pdo->prepare("SELECT id, uuid, email, name, status, created_at FROM customers ORDER BY id DESC LIMIT ? OFFSET ?");
+            $stmt = $pdo->prepare("SELECT id, uuid, name, status, created_at FROM customers ORDER BY id DESC LIMIT ? OFFSET ?");
             $stmt->bindValue(1, $per, PDO::PARAM_INT);
             $stmt->bindValue(2, $offset, PDO::PARAM_INT);
             $stmt->execute();
@@ -57,7 +56,6 @@ try {
         $input = json_decode(file_get_contents('php://input'), true);
         if (!$input) $input = $_POST;
         $name = sanitize_string($input['name'] ?? $input['username'] ?? '', 32);
-        $email = isset($input['email']) ? sanitize_string($input['email'],255) : null;
         $statusRaw = $input['status'] ?? 'ACTIVE';
         $status = normalize_status($statusRaw);
         if (!in_array($status, [STATUS_ACTIVE,STATUS_SUSPENDED,STATUS_DISABLED], true)) $status = STATUS_ACTIVE;
@@ -65,15 +63,9 @@ try {
         // حالت ساده: فقط نام کاربری (بدون ایمیل/رمز) — برای سازگاری، اگر ایمیل/رمز آمد قدیمی را ساپورت کن
         if ($name === '') json_out(['ok'=>false,'error'=>'نام کاربری الزامی است'],400);
         if (!is_valid_username($name)) json_out(['ok'=>false,'error'=>'نام کاربری نامعتبر (3-32)'],400);
-        // اگر ایمیل داده شد، اعتبارسنجی کن ولی الزامی نیست
-        if ($email !== null && $email !== '' && !is_valid_email($email)) json_out(['ok'=>false,'error'=>'ایمیل نامعتبر'],400);
-        if ($email === '') $email = null;
-
         try {
             $cust = create_customer_by_username($name);
             $id = $cust['id']; $uuid=$cust['uuid']; $apiKey=$cust['api_key'];
-            // ایمیل اختیاری: اگر داده شد ذخیره کن
-            if ($email) $pdo->prepare("UPDATE customers SET email=? WHERE id=?")->execute([$email,$id]);
             if ($status !== 'ACTIVE') $pdo->prepare("UPDATE customers SET status=? WHERE id=?")->execute([$status,$id]);
             sec_log('customer_created', (int)$customer['id'], ['new_customer_id'=>$id,'username'=>$name]);
             json_out(['ok'=>true,'id'=>$id,'uuid'=>$uuid,'api_key'=>$apiKey],201);
@@ -90,13 +82,12 @@ try {
 
         $fields = [];
         $params = [];
-        if (isset($input['name']) || isset($input['username'])) { $fields[] = 'name=?'; $params[] = sanitize_string($input['name'] ?? $input['username'], 32); }
-        if (isset($input['status'])) { $fields[] = 'status=?'; $params[] = normalize_status($input['status']); }
-        if (!empty($input['password'])) {
-            if (strlen($input['password']) < 8) json_out(['ok'=>false,'error'=>'Password too short'],400);
-            $fields[] = 'password_hash=?'; $params[] = password_hash($input['password'], PASSWORD_BCRYPT, ['cost'=>BCRYPT_COST]);
+        if (isset($input['name']) || isset($input['username'])) {
+            $nameTmp = sanitize_string($input['name'] ?? $input['username'], 32);
+            if (!is_valid_username($nameTmp)) json_out(['ok'=>false,'error'=>'نام کاربری نامعتبر (3-32)'],400);
+            $fields[] = 'name=?'; $params[] = $nameTmp;
         }
-        if (isset($input['email'])) { $fields[] = 'email=?'; $params[] = sanitize_string($input['email'],255) ?: null; }
+        if (isset($input['status'])) { $fields[] = 'status=?'; $params[] = normalize_status($input['status']); }
         if (!$fields) json_out(['ok'=>false,'error'=>'Nothing to update'],400);
         $params[] = $id;
         $sql = "UPDATE customers SET " . implode(', ', $fields) . ", updated_at=NOW() WHERE id=?";

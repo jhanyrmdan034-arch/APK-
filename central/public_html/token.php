@@ -10,7 +10,7 @@ $tok = trim($_GET['t'] ?? $_POST['t'] ?? '');
 $err=''; $ok='';
 $info = $tok ? validate_token_form($tok) : null;
 if (!$tok) { $err='لینک نامعتبر است.'; }
-elseif (!$info) { $err='لینک منقضی یا قبلاً استفاده شده است. از ربات فروش لینک جدید بگیرید.'; }
+elseif (!$info) { $err='لینک منقضی یا قبلاً استفاده شده است. از پنل مدیریت لینک جدید بسازید.'; }
 
 if ($_SERVER['REQUEST_METHOD']==='POST' && $info) {
     $botToken = trim($_POST['bot_token'] ?? '');
@@ -50,20 +50,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST' && $info) {
                         if(!$has->fetch()){
                             $dl=create_apk_delivery($cid,(int)$apk['id'],(int)$ord['id']);
                             $pdo->prepare("UPDATE orders SET status='delivered', delivered_at=NOW() WHERE id=?")->execute([$ord['id']]);
-                            if(SALES_BOT_TOKEN){
-                                $cust=$pdo->prepare("SELECT telegram_id FROM customers WHERE id=?"); $cust->execute([$cid]); $tg=$cust->fetchColumn();
-                                if($tg){
-                                    $url=APP_URL.'/api/delivery.php?t='.$dl['token'];
-                                    sales_bot_send('sendMessage',['chat_id'=>$tg,'text'=>"✅ ربات @$username متصل شد و APK تحویل داده شد!\n📥 دانلود: $url"]);
-                                    if((int)$apk['file_size'] < 49000000 && file_exists($apk['file_path'])){
-                                        $curlUrl = TELEGRAM_API_BASE . SALES_BOT_TOKEN . '/sendDocument';
-                                        $ch=curl_init($curlUrl);
-                                        $post=['chat_id'=>$tg,'caption'=>"📦 APK — سفارش #{$ord['id']}\nAPI Key: {$dl['api_key']}",'document'=>new CURLFile($apk['file_path'],'application/vnd.android.package-archive',$apk['file_name'])];
-                                        curl_setopt_array($ch,[CURLOPT_RETURNTRANSFER=>true,CURLOPT_POST=>true,CURLOPT_POSTFIELDS=>$post,CURLOPT_TIMEOUT=>60]);
-                                        curl_exec($ch); curl_close($ch);
-                                    }
-                                }
-                            }
+                            // اطلاع‌رسانی خودکار (ربات فروش حذف شده)
                         }
                     }
                 }
@@ -87,7 +74,7 @@ small{color:#94a3b8}</style>
 </head><body><div class="card">
 <h1>🔐 ثبت امن توکن ربات</h1>
 <?php if($err): ?><div class="err"><?= $err ?></div><?php endif; ?>
-<?php if($ok): ?><div class="ok"><?=htmlspecialchars($ok)?></div><p style="text-align:center"><a href="https://t.me/<?=htmlspecialchars(SALES_BOT_USERNAME ?: 'SalesBot')?>">بازگشت به ربات فروش</a></p>
+<?php if($ok): ?><div class="ok"><?=htmlspecialchars($ok)?></div><p style="text-align:center"><a href="/">بازگشت به صفحه اصلی</a></p>
 <?php elseif($info): ?>
 <p style="color:#cbd5e1;font-size:13px">توکن را از <code>@BotFather</code> بگیرید و فقط اینجا وارد کنید. توکن هرگز در APK قرار نمی‌گیرد و روی سرور رمزنگاری می‌شود.</p>
 <form method="post">
@@ -99,6 +86,6 @@ small{color:#94a3b8}</style>
 </form>
 <p style="font-size:12px;color:#94a3b8;margin-top:12px">انقضا: <?=htmlspecialchars($info['expires_at'])?> — یک‌بار مصرف — فقط HTTPS</p>
 <?php else: ?>
-<p>لینک نامعتبر. از ربات فروش لینک جدید بگیرید: <a href="https://t.me/<?=htmlspecialchars(SALES_BOT_USERNAME ?: 'SalesBot')?>">@<?=htmlspecialchars(SALES_BOT_USERNAME ?: 'SalesBot')?></a></p>
+<p>لینک نامعتبر. از پنل مدیریت لینک جدید بسازید.</p>
 <?php endif; ?>
 </div></body></html>

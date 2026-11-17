@@ -1,6 +1,6 @@
-# آموزش نصب مرحله‌به‌مرحله روی هاست — BABARPHANTOM Central v2
+# آموزش نصب مرحله‌به‌مرحله روی هاست — BABARPHANTOM Central v2 (نهایی — بدون ربات فروش + قالب دلخواه)
 
-> این راهنما برای هاست اشتراکی (cPanel) یا VPS (Ubuntu/Debian + Apache/Nginx) کاربرد دارد. تمام مسیرها دقیق گفته شده.
+> هاست اشتراکی (cPanel) یا VPS (Ubuntu/Debian + Apache/Nginx). تمام مسیرها دقیق، مطابق نسخه نهایی (ایمیل/رمز مشتری حذف، ربات فروش حذف، قالب دلخواه).
 
 ---
 
@@ -8,249 +8,204 @@
 
 | مورد | مقدار |
 |---|---|
-| PHP | 8.1 یا 8.2 یا 8.3 (ترجیحاً 8.1+) |
-| افزونه PHP | `pdo_mysql, openssl, curl, json, mbstring, fileinfo` (معمولاً پیش‌فرض فعال) |
+| PHP | 8.1 / 8.2 / 8.3 |
+| افزونه | `pdo_mysql, openssl, curl, json, mbstring, fileinfo` |
 | MySQL | 8.0 / MariaDB 10.6+ |
-| HTTPS | گواهی Let's Encrypt (اجباری برای فرم توکن و وب‌هوک) |
-| دسترسی | File Manager + phpMyAdmin + Cron Jobs |
-| فضا | 200MB برای کد + فضای APK (هر APK ~20MB) |
-
-بررسی سریع: در هاست یک فایل `phpinfo.php` با `<?php phpinfo();` بسازید → نسخه و افزونه‌ها را ببینید سپس حذف کنید.
+| HTTPS | Let's Encrypt (الزامی — فرم توکن و تحویل) |
+| دسترسی | File Manager + phpMyAdmin + Cron |
+| فضا | 200MB کد + APK (~20MB) + قالب |
 
 ---
 
-## گام 1 — ساخت دیتابیس
+## گام 1 — دیتابیس (بدون حذف اطلاعات)
 
-1. وارد **cPanel → MySQL® Databases** شوید.
-2. یک دیتابیس بسازید: `babar_central` (یا هر نامی).
-3. یک کاربر بسازید: `babar_user` با رمز قوی (مثلاً `StrongPass_123!` — یادداشت کنید).
-4. کاربر را به دیتابیس اضافه و تیک **ALL PRIVILEGES** بزنید.
-5. وارد **phpMyAdmin** → دیتابیس جدید را انتخاب → تب **Import** → فایل `private/database/schema.sql` را آپلود → **Go**.
-6. دوباره **Import** → فایل `private/database/migration_v2_sales_platform.sql` → **Go**.
-7. سپس **Import** → فایل `private/database/migration_v3_simplify_customer.sql` → **Go** (ساده‌سازی نام کاربری — بدون حذف اطلاعات).
-8. در **SQL** این را بزنید برای اطمینان:
+1. **cPanel → MySQL® Databases** → دیتابیس `babar_central` + کاربر `babar_user` + رمز قوی → ALL PRIVILEGES.
+2. **phpMyAdmin → Import** به‌ترتیب:
+   1. `private/database/schema.sql` (جداول پایه 8)
+   2. `private/database/migration_v2_sales_platform.sql` (10 جدول فروش + کیف پول)
+   3. `private/database/migration_v3_simplify_customer.sql` **(ساده‌سازی نهایی)**
+      - `ALTER customers MODIFY email NULL, password_hash NULL` — ایمیل/رمز مشتری نال
+      - `DROP INDEX uniq_email` — حذف یکتایی ایمیل
+      - `UPDATE name='' → user_id` + `ADD UNIQUE uniq_name(name)` — نام کاربری یکتا
+      - `INSERT IGNORE wallets` — حفظ کیف پول‌های قبلی
+      - **هیچ داده‌ای حذف نمی‌شود** — `admin@local` با ایمیل/رمز و `password_hash` محفوظ می‌ماند
+3. تست:
    ```sql
-   SHOW TABLES;
-   -- باید 17 جدول ببینید
-   SELECT name,status FROM customers;
-   -- باید admin@local (یا Administrator) ACTIVE باشد
-   -- ستون name یکتا است، email/password برای مشتریان عادی NULL
+   SHOW TABLES; -- 18 جدول
+   SELECT id,name,email,status FROM customers; -- admin@local با email دارد، بقیه name یکتا و email NULL
+   SELECT k FROM settings WHERE k='migration_v3'; -- done
    ```
 
 ---
 
-## گام 2 — آپلود و استخراج ZIP
+## گام 2 — آپلود ZIP
 
-> فایل دریافتی: `BABARPHANTOM_Central_v2.zip` (آماده نصب، بدون رمز/توکن)
+> فایل: `BABARPHANTOM_Central_v2.zip` (بدون ربات فروش، با `admin/template.php` و `public_html/templates/`)
 
-1. در cPanel → **File Manager** → به `public_html` بروید (اگر هاست چند دامنه دارد، به `public_html/your-domain/`).
-2. **Upload** → ZIP را آپلود کنید.
-3. راست‌کلیک → **Extract** → مقصد را `public_html` بگذارید (یا یک پوشه موقت).
-4. پس از استخراج، ساختار زیر را می‌بینید:
+1. **File Manager → public_html** → Upload ZIP → Extract به `public_html` (یا پوشه موقت).
+2. ساختار پس از Extract:
    ```
    BABARPHANTOM_Central_v2/
-   ├── public_html/   (api, admin, token.php, .htaccess)
-   ├── private/       (config, database, security, telegram, apk, uploads, logs, scripts)
+   ├── public_html/ (api, admin, templates, token.php, .htaccess)
+   ├── private/ (config, database, security, templates, apk, uploads, logs, scripts)
    └── docs/
    ```
-5. **محتوای `public_html/` داخل ZIP را** به ریشه `public_html` هاست منتقل کنید (Drag & Drop):
-   - `public_html/api/` → `/public_html/api/`
-   - `public_html/admin/` → `/public_html/admin/`
-   - `public_html/token.php` → `/public_html/token.php`
-   - `public_html/.htaccess` → `/public_html/.htaccess`
-6. **پوشه `private/` را خارج از `public_html` قرار دهید** — بسیار مهم:
-   - در File Manager یک سطح بالا بروید (دکمه **Up One Level**).
-   - اگر قبلاً `private/` آنجا نیست، پوشه را از محل استخراج به آنجا **Move** کنید → مسیر نهایی `/home/username/private/` (یا `/home/username/BABARPHANTOM_Central_v2/private/` اگر هاست اجازه فقط داخل public_html می‌دهد، با پشتیبانی تماس بگیرید — اما هرگز `private` را داخل `public_html` نگذارید).
-   - اگر هاست فقط `public_html` می‌دهد، `private` را در `public_html/../private` بسازید و در `public_html/api/*.php` ثابت `PRIVATE_ROOT` را در `config.php` تنظیم کنید.
-
-**تصویر ذهنی:**
-```
-[HOST ROOT]
-├── private/  <-- اینجا (غیرقابل دسترسی از وب)
-│   ├── config/config.php
-│   ├── apk/
-│   └── ...
-└── public_html/  <-- اینجا (قابل دسترسی)
-    ├── api/
-    ├── admin/
-    └── token.php
-```
+3. **محتوی `public_html/` داخل ZIP را** به ریشه `public_html` هاست منتقل کنید.
+4. **`private/` را خارج از `public_html` قرار دهید** — بسیار مهم:
+   - یک سطح بالا (Up One Level) → Move `private` به `/home/username/private`
+   - هرگز `private` داخل `public_html` نگذارید (توکن‌ها، `config.php` لو می‌رود)
+   ```
+   [HOST ROOT]
+   ├── private/  <-- اینجا (700)
+   └── public_html/ <-- اینجا
+   ```
 
 ---
 
-## گام 3 — تنظیم config.php
+## گام 3 — config.php
 
-1. در File Manager به `private/config/` بروید.
-2. فایل `config.sample.php` را **Copy** کنید به نام `config.php` (راست‌کلیک → Copy).
-3. `config.php` را **Edit** کنید و مقادیر زیر را پر کنید:
-
+1. `private/config/config.sample.php` → **Copy** به `config.php` (همان پوشه)
+2. Edit و پر کنید:
 ```php
-define('DB_HOST','localhost'); // معمولاً localhost
-define('DB_NAME','babar_central'); // نام ساخته‌شده در گام 1
+define('DB_HOST','localhost');
+define('DB_NAME','babar_central');
 define('DB_USER','babar_user');
-define('DB_PASS','StrongPass_123!'); // رمز همان کاربر
-
+define('DB_PASS','رمز_قوی');
 define('ENCRYPTION_KEY_B64','...'); // گام 4
 define('JWT_SECRET','...');
-
-define('APP_URL','https://your-host.example.com'); // دامنه با https
-define('SALES_BOT_TOKEN','123456789:AAH...'); // از @BotFather — گام 8
-define('SALES_BOT_USERNAME','YourSalesBot');
+define('APP_URL','https://your-host.example.com'); // با https، بدون / انتها
 ```
+3. ذخیره. **SALES_BOT_TOKEN وجود ندارد** — ربات فروش حذف شده.
 
-4. ذخیره.
-
-### گام 4 — تولید کلید رمزنگاری
-
-در ترمینال هاست (یا لوکال) بزنید:
-
+### گام 4 — کلید رمزنگاری
 ```bash
-openssl rand -base64 32
-# خروجی مثل: q1a2b3c4... (44 کاراکتر با =) → در ENCRYPTION_KEY_B64 بگذارید
-
-openssl rand -base64 64
-# → در JWT_SECRET
+openssl rand -base64 32  # -> ENCRYPTION_KEY_B64 (44 کاراکتر)
+openssl rand -base64 64  # -> JWT_SECRET
 ```
-
-در cPanel بدون SSH: از سایت `https://generate-random.org/encryption-key` یا در لوکال Windows `openssl` از Git Bash.
-
-> هرگز کلید را در گیت/ZIP عمومی نگذارید.
+بدون SSH: از `https://generate-random.org/encryption-key`
 
 ---
 
-## گام 5 — مجوز پوشه‌ها
+## گام 5 — مجوزها
 
-در File Manager راست‌کلیک → **Permissions**:
-
+File Manager → Permissions یا SSH:
 ```
-private/telegram_tokens  700
-private/logs             700
-private/backups          700
-private/apk              750
-private/uploads          750
-private/config/config.php 640
-public_html/.htaccess    644
-```
-
-یا via SSH:
-```bash
-chmod 700 private/telegram_tokens private/logs private/backups
-chmod 750 private/apk private/uploads
+chmod 700 private/telegram_tokens private/logs private/backups private/templates
+chmod 750 private/apk private/uploads public_html/templates
 chmod 640 private/config/config.php
+chmod 644 public_html/.htaccess public_html/templates/.htaccess
 ```
 
 ---
 
 ## گام 6 — HTTPS
 
-1. cPanel → **SSL/TLS Status** → **AutoSSL** یا **Let's Encrypt** → دامنه را فعال کنید.
-2. پس از فعال‌شدن، در `public_html/.htaccess` این دو خط را **Uncomment** کنید (حذف #):
+cPanel → SSL/TLS Status → AutoSSL → در `public_html/.htaccess` این را Uncomment:
 ```apache
 RewriteCond %{HTTPS} off
 RewriteRule ^(.*)$ https://%{HTTP_HOST}/$1 [R=301,L]
 ```
-3. تست: `http://your-host` باید به `https://` ریدایرکت شود.
 
 ---
 
-## گام 7 — وب‌هوک ربات فروش
+## گام 7 — مدیر اولیه (مستقل)
 
-1. در تلگرام به @BotFather → `/newbot` → نام و username بسازید → توکن را کپی.
-2. توکن را در `private/config/config.php` در `SALES_BOT_TOKEN` و `SALES_BOT_USERNAME` بگذارید.
-3. وب‌هوک را ست کنید (مرورگر):
-```
-https://api.telegram.org/bot<TOKEN>/setWebhook?url=https://your-host.example.com/api/sales_webhook.php
-```
-پاسخ باید `{"ok":true}` باشد.
-
-4. بررسی:
-```
-https://api.telegram.org/bot<TOKEN>/getWebhookInfo
-```
-باید `url` درست را نشان دهد.
-
-5. در `admin/settings.php` مقدار `sales_bot_username` و `card_number` (برای شارژ) را پر کنید.
+1. بروید `https://HOST/admin/` → `admin@local` / `Admin123!`
+2. **تنظیمات → تغییر رمز مدیر** → رمز قوی (bcrypt cost 12، `is_admin` با `email===admin@local` امن)
+3. ورود مدیر کاملاً مستقل — مشتریان با نام کاربری ساخته می‌شوند، ورود آنها با API Key (نه ایمیل/رمز)
 
 ---
 
-## گام 8 — مدیر اولیه و تغییر رمز
+## گام 8 — قالب دلخواه HTML (جدید)
 
-1. بروید `https://your-host.example.com/admin/`
-2. ورود: `admin@local` / `Admin123!`
-3. بلافاصله **تنظیمات → تغییر رمز مدیر** → رمز قوی جدید.
-4. در **تنظیمات** سایر مقادیر: `app_name, webview_url, card_number, support_telegram, apk_auto_delivery` را پر و ذخیره.
+> APK طرح را از `api/config.php → webview_url` می‌گیرد.
+
+1. در پنل: **قالب دلخواه** (`admin/template.php`)
+2. فایل `.html` (تا 5MB، بدون `<?php`) آپلود → خودکار ذخیره در `public_html/templates/custom.html` + پشتیبان `private/templates/custom.html` + `webview_url` به `https://HOST/templates/custom.html`
+3. پیش‌نمایش `iframe` همانجا — طرح داخل برنامه دقیقاً مثل همین HTML می‌شود.
+4. بعد توکن را در ساخت دستی بگذارید و نصب کنید — پنل و همه قابلیت‌ها حفظ.
 
 ---
 
-## گام 9 — Cron Job (بکاپ خودکار)
+## گام 9 — APK
 
-cPanel → **Cron Jobs** → **Add**:
+`admin/apk.php` → نسخه مثل `1.0.0` + `versionCode 1` → تیک `فعال` → آپلود APK (~20MB، PK header، SHA256)
 
+---
+
+## گام 10 — ساخت مشتری و تحویل (فقط نام کاربری + توکن)
+
+1. **ساخت دستی** → `نام کاربری (مثال ali_123)` + `توکن ربات تلگرام مشتری (123456:AAH...)` + انتخاب APK → **ساخت مشتری و بسته تحویل**
+   - اعتبارسنجی `getMe` (curl به `api.telegram.org`)
+   - نام تکراری → `نام کاربری تکراری است`
+   - ایمیل/رمز **کاملاً حذف** — `INSERT customers(uuid,null,null,name,ACTIVE)` + `wallets` + `api_keys` (64hex اختصاصی)
+   - توکن `AES-256-GCM` → `telegram_bots` + `.enc` (0600)
+   - سفارش `manual_delivery` + `apk_deliveries` (`delivery_token`+`api_key` اختصاصی، 30 روز) — **نه کلید مشترک**
+2. نتیجه: لینک `https://HOST/api/delivery.php?t=...` + API Key → دانلود دستی (ربات فروش وجود ندارد)
+
+---
+
+## گام 11 — مدیریت دسترسی
+
+- `مشتریان` → `ACTIVE` / `SUSPENDED` / `DISABLED` (همراه `devices is_active` خودکار)
+- `ربات‌ها` → قطع ربات ( `is_connected=0` → پروکسی 403)
+- `دستگاه‌ها` → مسدود/فعال تکی
+- همه سرور-side — APK 403/410 می‌گیرد
+
+---
+
+## گام 12 — Cron
+
+cPanel → Cron Jobs:
 ```
-Minute: 0   Hour: 3   Day: *   Month: *   Weekday: *
-Command: php /home/username/private/scripts/backup.php >> /home/username/private/logs/backup.log 2>&1
+0 3 * * * php /home/username/private/scripts/backup.php >> /home/username/private/logs/backup.log 2>&1
 ```
-
-مسیر دقیق را از File Manager (ستون Path) کپی کنید.
-
-تست دستی: دکمه **بکاپ فوری** در `admin/settings.php` یا SSH:
-```bash
-php private/scripts/backup.php
-# باید در private/backups/backup_*.sql.gz بسازد
-```
+تست: `admin/settings.php → بکاپ فوری`
 
 ---
 
-## گام 10 — بارگذاری APK
+## تست نهایی
 
-1. `admin/apk.php` → `انتخاب فایل` (APK ~20MB تأییدشده) → نسخه `1.0.0`, `versionCode 1` → تیک `فعال` → آپلود.
-2. بررسی: نسخه فعال سبز شود + SHA256 نمایش داده شود.
-3. APK عمومی است — نیازی به کامپایل مجدد برای هر مشتری نیست.
+| تست | چگونه | انتظار |
+|---|---|---|
+| سلامت | `https://HOST/api/status.php` | `{"ok":true}` |
+| ورود مدیر | `admin@local / Admin123!` | 200 + داشبورد |
+| ایمیل مشتری حذف | `SELECT email FROM customers WHERE name='ali_123'` | `NULL` |
+| ساخت مشتری API | `POST /api/customers.php {name, status}` | 201 + `api_key` 64hex یکتا |
+| تکراری username | دوباره همان `name` | 400 `نام کاربری تکراری است` |
+| توکن getMe | توکن نامعتبر در ساخت دستی | خطای `توکن نامعتبر` و عدم ذخیره |
+| API Key اختصاصی | دو مشتری بساز، `api_keys` را ببین | دو کلید متفاوت 64hex |
+| قالب | `template.php` → `test.html` آپلود → `GET /api/config.php` با `X-API-Key` | `webview_url` = `https://HOST/templates/custom.html` + `GET /templates/custom.html` 200 |
+| تعلیق | `customers.php → SUSPENDED` → `POST /api/telegram.php` با همان `X-API-Key` | 403 |
+| Migration بدون حذف | قبل و بعد `SELECT COUNT(*) FROM customers` | برابر + admin حفظ |
 
----
-
-## گام 11 — تست نهایی
-
-| تست | چگونه |
-|---|---|
-| سلامت | `https://HOST/api/status.php` → `ok:true` |
-| ربات فروش | در تلگرام `/start` → منو ظاهر شود |
-| شارژ | منو `شارژ 10000` → رسید بفرست → در `payments.php` تأیید → کیف پول شارژ شود |
-| سفارش | `سفارش phantom_basic` (یا در `orders.php`) → اگر موجودی کافی، تحویل خودکار |
-| فرم توکن | `bots.php → ایجاد لینک امن` → کلیک → توکن @BotFather را وارد → `@username متصل` |
-| تحویل دستی | `ساخت دستی → نام کاربری + توکن + APK → ساخت مشتری و بسته (فقط 2 فیلد) → لینک دانلود → ارسال ربات` |
-| جداسازی | با دو مشتری تست: هر کدام فقط داده خود را ببیند |
-| دسترسی | در `customers.php` یک مشتری را `SUSPENDED` → API آن 403 → دوباره `ACTIVE` → درست شود |
-| لغو لینک | در `ساخت دستی → لغو لینک` → لینک قبلی 410 شود |
-
-لاگ: `private/logs/security.log` و `private/logs/sales_bot.log`
+لاگ: `private/logs/security.log`
 
 ---
 
-## فهرست فایل → کجا قرار بدهم (چک‌لیست)
+## فهرست فایل → مقصد
 
-| فایل در ZIP | مقصد روی هاست |
+| در ZIP | مقصد |
 |---|---|
 | `public_html/api/*` | `/public_html/api/` |
-| `public_html/admin/*` | `/public_html/admin/` |
+| `public_html/admin/*` (شامل `template.php`) | `/public_html/admin/` |
+| `public_html/templates/.htaccess` | `/public_html/templates/` |
 | `public_html/token.php` | `/public_html/token.php` |
-| `public_html/.htaccess` | `/public_html/.htaccess` |
-| `private/config/config.sample.php` | `/private/config/config.sample.php` → کپی به `config.php` |
-| `private/database/*.sql` (شامل `migration_v3_simplify_customer.sql`) | `/private/database/` (سه فایل را به‌ترتیب Import کنید) |
+| `private/config/config.sample.php` | `/private/config/` → کپی به `config.php` |
+| `private/database/*.sql` (3 فایل) | Import به‌ترتیب |
 | `private/security/helpers.php` | `/private/security/` |
-| `private/telegram/sales_bot.php` | `/private/telegram/` |
+| `private/templates/.htaccess` | `/private/templates/` |
 | `private/scripts/backup.php` | `/private/scripts/` |
-| `private/.htaccess` | `/private/.htaccess` (Require all denied) |
-| `docs/*` | نیازی به آپلود نیست (مستندات) |
 
-**پس از نصب:** پوشه `docs` و فایل‌های `*.sql` را می‌توانید از هاست حذف کنید (اختیاری).
+**پس از نصب:** `docs/` را لازم نیست آپلود کنید.
 
 ---
 
-## عیب‌یابی رایج
+## عیب‌یابی
 
 - `Invalid API key` → `api_keys` خالی یا `status != ACTIVE`
-- `HTTPS required` → روی http تست می‌کنید — `ENV=development` موقت کنید
-- وب‌هوک 500 → `SALES_BOT_TOKEN` خالی یا پرمیشن `private/telegram/sales_bot.php`
+- `نام کاربری تکراری` → نام دیگری
+- `توکن نامعتبر` → `@BotFather` را چک کن
+- `HTTPS required` → روی http تست می‌کنی — `ENV=development` موقت
 - دانلود 410 → لینک منقضی — `صدور مجدد`
-- آپلود APK خطا → حجم >100MB یا پرمیشن `private/apk`
+- قالب لود نشد → `GET /templates/custom.html` را مستقیم تست کن (باید 200 + HTML)

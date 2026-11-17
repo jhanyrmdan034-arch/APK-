@@ -20,11 +20,7 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
             wallet_add_transaction((int)$row['customer_id'],'payment_approved',(int)$row['amount'],'payment_request',$id,'تأیید شارژ #'.$id,(int)$me['id']);
             admin_log((int)$me['id'],'payment_approved','payment',$id,['amount'=>$row['amount']]);
             $pdo->commit();
-            // اطلاع به ربات فروش
-            if(SALES_BOT_TOKEN){
-                $c=$pdo->prepare("SELECT telegram_id FROM customers WHERE id=?"); $c->execute([$row['customer_id']]); $tg=$c->fetchColumn();
-                if($tg) sales_bot_send('sendMessage',['chat_id'=>$tg,'text'=>"✅ پرداخت #$id تأیید شد! مبلغ ".number_format($row['amount'])." تومان به کیف پول اضافه شد."]);
-            }
+            // اطلاع‌رسانی (ربات فروش حذف شده — اطلاع‌رسانی از طریق پنل)
             $msg="پرداخت #$id تأیید و کیف پول شارژ شد.";
             // اگر سفارش pending با همین مبلغ دارد، خودکار پرداخت کند؟ (اختیاری)
         }catch(Throwable $e){ $pdo->rollBack(); $msg='خطا: '.$e->getMessage(); $err=true; }
@@ -33,18 +29,16 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
         $cidTmp=$pdo->prepare("SELECT customer_id FROM payment_requests WHERE id=?"); $cidTmp->execute([$id]); wallet_add_transaction((int)($cidTmp->fetchColumn()?:0),'payment_rejected',0,'payment_request',$id,$note,(int)$me['id']);
         admin_log((int)$me['id'],'payment_rejected','payment',$id,['note'=>$note]);
         $msg="پرداخت #$id رد شد.";
-        if(SALES_BOT_TOKEN){
-            try{$c=$pdo->prepare("SELECT customer_id FROM payment_requests WHERE id=?"); $c->execute([$id]); $cid=$c->fetchColumn(); $tg=$pdo->prepare("SELECT telegram_id FROM customers WHERE id=?");$tg->execute([$cid]);$tid=$tg->fetchColumn(); if($tid) sales_bot_send('sendMessage',['chat_id'=>$tid,'text'=>"❌ پرداخت #$id رد شد. دلیل: $note"]);}catch(Throwable $x){}
-        }
+        // اطلاع‌رسانی رد (ربات فروش حذف شده)
     }
 }
 $filter=sanitize_string($_GET['status']??'pending',20);
 $allowed=['pending','approved','rejected','all'];
 if(!in_array($filter,$allowed,true)) $filter='pending';
 if($filter==='all'){
-    $rows=$pdo->query("SELECT p.*, c.name, c.email FROM payment_requests p JOIN customers c ON c.id=p.customer_id ORDER BY p.id DESC LIMIT 100")->fetchAll();
+    $rows=$pdo->query("SELECT p.*, c.name FROM payment_requests p JOIN customers c ON c.id=p.customer_id ORDER BY p.id DESC LIMIT 100")->fetchAll();
 } else {
-    $stmt=$pdo->prepare("SELECT p.*, c.name, c.email FROM payment_requests p JOIN customers c ON c.id=p.customer_id WHERE p.status=? ORDER BY p.id DESC LIMIT 100");
+    $stmt=$pdo->prepare("SELECT p.*, c.name FROM payment_requests p JOIN customers c ON c.id=p.customer_id WHERE p.status=? ORDER BY p.id DESC LIMIT 100");
     $stmt->execute([$filter]); $rows=$stmt->fetchAll();
 }
 ?>
@@ -66,7 +60,7 @@ if($filter==='all'){
 <?php foreach($rows as $r): ?>
 <tr>
 <td>#<?=$r['id']?></td>
-<td><?=htmlspecialchars($r['name']?: $r['email'])?> (#<?=$r['customer_id']?>)</td>
+<td><?=htmlspecialchars($r['name']?: '—')?> (#<?=$r['customer_id']?>)</td>
 <td style="font-weight:700"><?=number_format($r['amount'])?></td>
 <td><?=htmlspecialchars($r['method'])?></td>
 <td><?=$r['status']==='pending'?'⏳ pending':($r['status']==='approved'?'✅ approved':'❌ rejected')?></td>
@@ -85,5 +79,5 @@ if($filter==='all'){
 <?php if(!$rows): ?><tr><td colspan="8" style="text-align:center;color:#94a3b8">موردی یافت نشد.</td></tr><?php endif; ?>
 </table>
 </div>
-<div class="card" style="font-size:11px;color:#94a3b8">پس از تأیید، کیف پول به‌صورت خودکار شارژ و به مشتری در ربات فروش اطلاع داده می‌شود. مدیر فقط پرداخت‌های دستی را تأیید می‌کند.</div>
+<div class="card" style="font-size:11px;color:#94a3b8">پس از تأیید، کیف پول به‌صورت خودکار شارژ می‌شود. مدیر فقط پرداخت‌های دستی را تأیید می‌کند.</div>
 </div></body></html>

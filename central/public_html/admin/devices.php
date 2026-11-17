@@ -34,7 +34,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
 $filterCid = $isAdmin ? $cid : (int)$me['id'];
 $stmt=$pdo->prepare("SELECT id, device_id, device_name, model, os_version, app_version, last_seen_at, is_active, created_at FROM devices WHERE customer_id=? ORDER BY last_seen_at DESC");
 $stmt->execute([$filterCid]); $rows=$stmt->fetchAll();
-$cEmail=$pdo->prepare("SELECT email FROM customers WHERE id=?"); $cEmail->execute([$filterCid]); $cEmail=$cEmail->fetchColumn();
+$cEmail=$pdo->prepare("SELECT name FROM customers WHERE id=?"); $cEmail->execute([$filterCid]); $cEmail=$cEmail->fetchColumn();
 $cStatus=$pdo->prepare("SELECT status FROM customers WHERE id=?"); $cStatus->execute([$filterCid]); $cStatus=$cStatus->fetchColumn();
 ?>
 <!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>دستگاه‌ها</title>
@@ -43,7 +43,7 @@ $cStatus=$pdo->prepare("SELECT status FROM customers WHERE id=?"); $cStatus->exe
 <div class="nav"><b><?=htmlspecialchars(APP_NAME)?></b><a href="index.php">داشبورد</a><a href="customers.php">مشتریان</a><a href="wallets.php">کیف پول</a><a href="payments.php">پرداخت‌ها</a><a href="orders.php">سفارش‌ها</a><a class="active" href="devices.php">دستگاه‌ها</a><a href="delivery_builder.php">ساخت دستی</a><a href="apk.php">APK</a><a href="template.php">قالب دلخواه</a><a href="settings.php">تنظیمات</a></div>
 <div class="wrap">
 <h1>دستگاه‌ها — مسدودسازی مستقل</h1>
-<?php if($isAdmin): ?><div class="card"><form method="get">مشتری: <select name="customer_id" onchange="this.form.submit()"><?php $cs=$pdo->query("SELECT id,email,status FROM customers ORDER BY id"); foreach($cs as $c) echo '<option value="'.$c['id'].'"'.($c['id']==$filterCid?' selected':'').'>'.htmlspecialchars($c['email'])." [{$c['status']}]</option>"; ?></select></form></div><?php endif; ?>
+<?php if($isAdmin): ?><div class="card"><form method="get">مشتری: <select name="customer_id" onchange="this.form.submit()"><?php $cs=$pdo->query("SELECT id,name,status FROM customers ORDER BY id"); foreach($cs as $c) echo '<option value="'.$c['id'].'"'.($c['id']==$filterCid?' selected':'').'>'.htmlspecialchars($c['name'])." [{$c['status']}]</option>"; ?></select></form></div><?php endif; ?>
 <p>مشتری: <b><?=htmlspecialchars($cEmail)?></b> — وضعیت حساب: <b><?=htmlspecialchars($cStatus)?></b> — <?=count($rows)?> دستگاه — جداسازی <code>WHERE customer_id=?</code></p>
 <div class="card" style="overflow:auto">
 <table><tr><th>ID</th><th>Device ID</th><th>نام / مدل</th><th>OS / App</th><th>آخرین اتصال</th><th>وضعیت دستگاه</th><th>عملیات</th></tr>

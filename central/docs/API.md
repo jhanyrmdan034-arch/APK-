@@ -19,7 +19,7 @@ Admin login. Body `{"email","password"}` → `{ok, customer, api_key, is_admin}`
 
 ### `GET/POST/PUT/DELETE /api/customers.php` (admin only)
 - `GET ?page=&per=&q=` — list (with devices/bots count)
-- `POST {"name":"username","status":"ACTIVE|SUSPENDED|DISABLED"}` — **ساده‌شده v3: فقط نام کاربری یکتا** (بدون ایمیل/رمز) + wallet + api_key؛ ایمیل اختیاری برای سازگاری قدیمی
+- `POST {"name":"username","status":"ACTIVE|SUSPENDED|DISABLED"}` — **فقط نام کاربری یکتا** (بدون ایمیل/رمز) + wallet + `api_key` اختصاصی 64hex — ایمیل/رمز کاملاً حذف
 - `PUT {"id","name","status"}` — update (نام یکتا)
 - `DELETE ?id=` — delete (cascade)
 
@@ -59,9 +59,6 @@ Public health: `{ok, checks:{database,token_store,logs,encryption,https}, time}`
 ### `GET /api/delivery.php?t=<64hex>`
 Public download with `delivery_token` (no login). Checks `customer.status==ACTIVE`, `expires_at`, file exists, increments `download_count`. Returns APK binary.
 
-### `POST /api/sales_webhook.php`
-Telegram webhook for sales bot (private/telegram/sales_bot.php). Handles `/start`, wallet, charge, receipt photo, buy, token form link, APK delivery.
-
 ### `GET/POST /token.php?t=<one-time>`
 Secure HTTPS form for bot token submission. `token_forms` one-time, TTL 30min, validated via `getMe`, stored encrypted in `telegram_bots` + `private/telegram_tokens/<cid>.enc`. Auto-delivers APK if order `paid` pending.
 
@@ -94,16 +91,13 @@ Secure HTTPS form for bot token submission. `token_forms` one-time, TTL 30min, v
 
 ---
 
-## Sales Automation Flow
+## Sales Automation Flow (بدون ربات فروش — پنل محور)
 
 ```
-User /start → ensure_customer → wallet 0
-    → charge request (amount) → payment_requests pending
-        → admin approve → wallets +balance → notify sales bot
-    → order buy (product_code) → wallet -price → orders paid
-        → if apk_auto_delivery → apk_deliveries + api_keys + notify + sendDocument
-    → token form link → /token.php?t=... (HTTPS, one-time)
-        → getMe → encrypt → telegram_bots
-        → if order paid pending delivery → auto deliver
-    → delivery.php?t=... → APK download (no token inside)
+مدیر → delivery_builder: نام کاربری + توکن → getMe → encrypt → telegram_bots
+    → انتخاب APK → apk_deliveries (delivery_token + api_key اختصاصی) → لینک دستی
+مشتری → APK با X-API-Key → /api/config.php (webview_url + bot status)
+       → /api/telegram.php (پراکسی امن با فیلتر Owner)
+       → /api/delivery.php?t=... → دانلود APK (بدون توکن داخل فایل)
+قالب دلخواه: مدیر → template.php (HTML) → webview_url → APK لود
 ```

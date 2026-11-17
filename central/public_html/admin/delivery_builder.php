@@ -76,33 +76,6 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
             }
         }
     }
-    // --- ارسال از طریق ربات فروش ---
-    elseif ($act==='send_via_bot') {
-        $cid=(int)($_POST['customer_id']??0);
-        $deliveryToken=sanitize_string($_POST['delivery_token']??'',64);
-        if(!$cid || !$deliveryToken){$msg='پارامتر ناقص';$err=true;}
-        else{
-            $c=$pdo->prepare("SELECT name,telegram_id FROM customers WHERE id=?"); $c->execute([$cid]); $cust=$c->fetch();
-            if(!$cust || empty($cust['telegram_id'])){$msg='مشتری telegram_id ندارد — چون با نام کاربری ساخته شده، لینک را دستی بفرستید یا ابتدا کاربر را در ربات فروش /start کند.';$err=true;}
-            elseif(!SALES_BOT_TOKEN){$msg='SALES_BOT_TOKEN تنظیم نشده';$err=true;}
-            else{
-                $d=$pdo->prepare("SELECT d.*, a.file_path, a.file_name FROM apk_deliveries d JOIN apk_files a ON a.id=d.apk_file_id WHERE d.delivery_token=? AND d.customer_id=? LIMIT 1"); $d->execute([$deliveryToken,$cid]); $del=$d->fetch();
-                if(!$del){$msg='تحویل یافت نشد';$err=true;}
-                elseif(!file_exists($del['file_path'])){$msg='فایل APK موجود نیست';$err=true;}
-                else{
-                    $caption="📦 بسته APK شما آماده است!\n👤 نام کاربری: {$cust['name']}\n🔗 لینک دانلود:\n".APP_URL."/api/delivery.php?t=".$deliveryToken."\n🔑 API Key: ".$del['api_key'];
-                    $curlUrl=TELEGRAM_API_BASE.SALES_BOT_TOKEN.'/sendDocument';
-                    $ch=curl_init($curlUrl);
-                    $post=['chat_id'=>$cust['telegram_id'],'caption'=>$caption,'document'=>new CURLFile($del['file_path'],'application/vnd.android.package-archive',$del['file_name'])];
-                    curl_setopt_array($ch,[CURLOPT_RETURNTRANSFER=>true,CURLOPT_POST=>true,CURLOPT_POSTFIELDS=>$post,CURLOPT_TIMEOUT=>60]);
-                    $resp=curl_exec($ch); curl_close($ch);
-                    $j=json_decode($resp,true);
-                    if(!empty($j['ok'])){ $msg="✅ فایل برای '{$cust['name']}' ارسال شد."; admin_log((int)$me['id'],'apk_sent_via_bot','customer',$cid,['delivery'=>$deliveryToken]);}
-                    else{ $msg='ارسال ناموفق: '.htmlspecialchars(substr($resp??'',0,500)); $err=true;}
-                }
-            }
-        }
-    }
     // --- لغو / صدور مجدد ---
     elseif ($act==='revoke') {
         $did=(int)($_POST['delivery_id']??0);
@@ -149,7 +122,7 @@ $recentDeliveries=$pdo->query("SELECT d.id, d.delivery_token, d.api_key, d.downl
 <p>⏳ انقضا: <?=htmlspecialchars($result['delivery']['expires_at'])?></p>
 <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
 <a href="<?=htmlspecialchars($result['url'])?>" target="_blank" style="background:#22c55e;color:#052e16;padding:10px 16px;border-radius:8px;text-decoration:none">📥 دانلود APK</a>
-<form method="post" style="display:inline"><input type="hidden" name="action" value="send_via_bot"><input type="hidden" name="customer_id" value="<?=$result['customer']['id']?>"><input type="hidden" name="delivery_token" value="<?=htmlspecialchars($result['delivery']['token'])?>"><button style="background:#38bdf8;color:#082f49">📤 ارسال از طریق ربات فروش</button></form>
+
 </div>
 <p style="font-size:11px;color:#94a3b8;margin-top:8px">اگر مشتری telegram_id ندارد، لینک را دستی بفرستید.</p>
 </div>

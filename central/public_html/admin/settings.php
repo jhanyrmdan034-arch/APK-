@@ -9,7 +9,7 @@ $msg='';
 if ($_SERVER['REQUEST_METHOD']==='POST') {
     $action=$_POST['action']??'';
     if ($action==='save') {
-        $allow=['app_name','webview_url','poll_interval_sec','upload_interval_sec','max_devices_per_customer','maintenance','card_number','card_holder','support_telegram','apk_auto_delivery','sales_bot_username'];
+        $allow=['app_name','webview_url','poll_interval_sec','upload_interval_sec','max_devices_per_customer','maintenance','card_number','card_holder','support_telegram','apk_auto_delivery'];
         foreach($allow as $k){
             if(isset($_POST[$k])){
                 $v=sanitize_string($_POST[$k],500);
@@ -63,7 +63,6 @@ $adminLogs=$pdo->query("SELECT l.*, c.email FROM admin_logs l LEFT JOIN customer
 <label>شماره کارت</label><input name="card_number" value="<?=htmlspecialchars($settings['card_number']??'6037-xxxx-xxxx-xxxx')?>" dir="ltr">
 <label>نام صاحب کارت</label><input name="card_holder" value="<?=htmlspecialchars($settings['card_holder']??'BABARPHANTOM')?>">
 <label>پشتیبانی تلگرام</label><input name="support_telegram" value="<?=htmlspecialchars($settings['support_telegram']??'@support')?>" dir="ltr">
-<label>ربات فروش username</label><input name="sales_bot_username" value="<?=htmlspecialchars($settings['sales_bot_username']??SALES_BOT_USERNAME)?>" dir="ltr">
 <label>apk_auto_delivery (1=خودکار پس از پرداخت / 0=دستی)</label><select name="apk_auto_delivery"><option value="1" <?=($settings['apk_auto_delivery']??'1')==='1'?'selected':''?>>1 خودکار</option><option value="0" <?=($settings['apk_auto_delivery']??'0')==='0'?'selected':''?>>0 دستی</option></select>
 <label>maintenance (0/1)</label><select name="maintenance"><option value="0" <?=($settings['maintenance']??'0')==='0'?'selected':''?>>فعال</option><option value="1" <?=($settings['maintenance']??'0')==='1'?'selected':''?>>تعمیر</option></select>
 <button style="background:#22c55e;color:#052e16;width:100%;margin-top:8px">ذخیره</button>

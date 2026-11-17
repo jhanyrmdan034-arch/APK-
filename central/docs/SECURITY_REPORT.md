@@ -31,7 +31,7 @@
 
 ## لاگ و حسابرسی
 - `admin_logs` (admin_id, action, target_type/id, details JSON, ip)
-- `security_events` + `private/logs/security.log` + `private/logs/sales_bot.log`
+- `security_events` + `private/logs/security.log`
 - عملیات: `customer_created, payment_approved, manual_delivery_created, delivery_revoked, device_blocked, bot_connected`
 
 ## باقی‌مانده پیشنهادی (غیربحرانی)
