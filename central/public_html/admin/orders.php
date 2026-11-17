@@ -39,9 +39,9 @@ $filter=$_GET['status']??'all';
 $allowed=['pending','paid','delivered','cancelled','all'];
 if(!in_array($filter,$allowed,true)) $filter='all';
 if($filter==='all'){
-    $rows=$pdo->query("SELECT o.*, c.email FROM orders o JOIN customers c ON c.id=o.customer_id ORDER BY o.id DESC LIMIT 100")->fetchAll();
+    $rows=$pdo->query("SELECT o.*, c.name, c.email FROM orders o JOIN customers c ON c.id=o.customer_id ORDER BY o.id DESC LIMIT 100")->fetchAll();
 } else {
-    $stmt=$pdo->prepare("SELECT o.*, c.email FROM orders o JOIN customers c ON c.id=o.customer_id WHERE o.status=? ORDER BY o.id DESC LIMIT 100");
+    $stmt=$pdo->prepare("SELECT o.*, c.name, c.email FROM orders o JOIN customers c ON c.id=o.customer_id WHERE o.status=? ORDER BY o.id DESC LIMIT 100");
     $stmt->execute([$filter]); $rows=$stmt->fetchAll();
 }
 ?>
@@ -65,7 +65,7 @@ if($filter==='all'){
 ?>
 <tr>
 <td>#<?=$r['id']?></td>
-<td><?=htmlspecialchars($r['email'])?></td>
+<td><?=htmlspecialchars($r['name']?: $r['email'])?></td>
 <td><?=htmlspecialchars($r['product_code'])?></td>
 <td><?=number_format($r['amount'])?></td>
 <td><?=$r['status']?></td>

@@ -56,26 +56,30 @@ try {
     if ($method === 'POST') {
         $input = json_decode(file_get_contents('php://input'), true);
         if (!$input) $input = $_POST;
-        $email = sanitize_string($input['email'] ?? '', 255);
-        $name = sanitize_string($input['name'] ?? '', 255);
-        $password = $input['password'] ?? '';
-        $status = $input['status'] ?? 'active';
+        $name = sanitize_string($input['name'] ?? $input['username'] ?? '', 32);
+        $email = isset($input['email']) ? sanitize_string($input['email'],255) : null;
+        $statusRaw = $input['status'] ?? 'ACTIVE';
+        $status = normalize_status($statusRaw);
+        if (!in_array($status, [STATUS_ACTIVE,STATUS_SUSPENDED,STATUS_DISABLED], true)) $status = STATUS_ACTIVE;
 
-        if (!is_valid_email($email)) json_out(['ok' => false, 'error' => 'Invalid email'], 400);
-        if (strlen($password) < 8) json_out(['ok' => false, 'error' => 'Password too short (min 8)'], 400);
-        if (!in_array($status, ['active','blocked','pending'], true)) $status = 'active';
+        // حالت ساده: فقط نام کاربری (بدون ایمیل/رمز) — برای سازگاری، اگر ایمیل/رمز آمد قدیمی را ساپورت کن
+        if ($name === '') json_out(['ok'=>false,'error'=>'نام کاربری الزامی است'],400);
+        if (!is_valid_username($name)) json_out(['ok'=>false,'error'=>'نام کاربری نامعتبر (3-32)'],400);
+        // اگر ایمیل داده شد، اعتبارسنجی کن ولی الزامی نیست
+        if ($email !== null && $email !== '' && !is_valid_email($email)) json_out(['ok'=>false,'error'=>'ایمیل نامعتبر'],400);
+        if ($email === '') $email = null;
 
-        $uuid = sprintf('%04x%04x-%04x-%04x-%04x-%04x%04x%04x', random_int(0,0xffff), random_int(0,0xffff), random_int(0,0xffff), random_int(0,0x0fff)|0x4000, random_int(0,0x3fff)|0x8000, random_int(0,0xffff), random_int(0,0xffff), random_int(0,0xffff));
-        $hash = password_hash($password, PASSWORD_BCRYPT, ['cost' => BCRYPT_COST]);
-
-        $pdo->prepare("INSERT INTO customers (uuid, email, password_hash, name, status) VALUES (?, ?, ?, ?, ?)")->execute([$uuid, $email, $hash, $name, $status]);
-        $id = (int)$pdo->lastInsertId();
-        // create api key
-        $apiKey = bin2hex(random_bytes(32));
-        $pdo->prepare("INSERT INTO api_keys (customer_id, api_key) VALUES (?, ?)")->execute([$id, $apiKey]);
-
-        sec_log('customer_created', (int)$customer['id'], ['new_customer_id' => $id, 'email' => $email]);
-        json_out(['ok' => true, 'id' => $id, 'uuid' => $uuid, 'api_key' => $apiKey], 201);
+        try {
+            $cust = create_customer_by_username($name);
+            $id = $cust['id']; $uuid=$cust['uuid']; $apiKey=$cust['api_key'];
+            // ایمیل اختیاری: اگر داده شد ذخیره کن
+            if ($email) $pdo->prepare("UPDATE customers SET email=? WHERE id=?")->execute([$email,$id]);
+            if ($status !== 'ACTIVE') $pdo->prepare("UPDATE customers SET status=? WHERE id=?")->execute([$status,$id]);
+            sec_log('customer_created', (int)$customer['id'], ['new_customer_id'=>$id,'username'=>$name]);
+            json_out(['ok'=>true,'id'=>$id,'uuid'=>$uuid,'api_key'=>$apiKey],201);
+        } catch(Throwable $e){
+            json_out(['ok'=>false,'error'=>$e->getMessage()],400);
+        }
     }
 
     if ($method === 'PUT' || $method === 'PATCH') {
@@ -86,12 +90,13 @@ try {
 
         $fields = [];
         $params = [];
-        if (isset($input['name'])) { $fields[] = 'name=?'; $params[] = sanitize_string($input['name'], 255); }
-        if (isset($input['status']) && in_array($input['status'], ['active','blocked','pending'], true)) { $fields[] = 'status=?'; $params[] = $input['status']; }
+        if (isset($input['name']) || isset($input['username'])) { $fields[] = 'name=?'; $params[] = sanitize_string($input['name'] ?? $input['username'], 32); }
+        if (isset($input['status'])) { $fields[] = 'status=?'; $params[] = normalize_status($input['status']); }
         if (!empty($input['password'])) {
             if (strlen($input['password']) < 8) json_out(['ok'=>false,'error'=>'Password too short'],400);
             $fields[] = 'password_hash=?'; $params[] = password_hash($input['password'], PASSWORD_BCRYPT, ['cost'=>BCRYPT_COST]);
         }
+        if (isset($input['email'])) { $fields[] = 'email=?'; $params[] = sanitize_string($input['email'],255) ?: null; }
         if (!$fields) json_out(['ok'=>false,'error'=>'Nothing to update'],400);
         $params[] = $id;
         $sql = "UPDATE customers SET " . implode(', ', $fields) . ", updated_at=NOW() WHERE id=?";

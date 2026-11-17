@@ -22,7 +22,7 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
 }
 $filterCid = isset($_GET['customer_id']) ? (int)$_GET['customer_id'] : 0;
 $where = $filterCid ? "WHERE w.customer_id=$filterCid" : "";
-$rows=$pdo->query("SELECT w.customer_id, w.balance, c.email, c.status FROM wallets w JOIN customers c ON c.id=w.customer_id $where ORDER BY w.customer_id DESC LIMIT 100")->fetchAll();
+$rows=$pdo->query("SELECT w.customer_id, w.balance, c.name, c.email, c.status FROM wallets w JOIN customers c ON c.id=w.customer_id $where ORDER BY w.customer_id DESC LIMIT 100")->fetchAll();
 ?>
 <!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>کیف پول</title>
 <style>*{box-sizing:border-box}body{font-family:Vazirmatn,Tahoma,sans-serif;background:#0f172a;color:#e2e8f0;margin:0}.nav{background:#1e293b;padding:12px 24px;display:flex;gap:10px;flex-wrap:wrap}.nav a{color:#94a3b8;text-decoration:none;padding:8px 10px;border-radius:8px;font-size:13px}.nav a.active{background:#334155;color:#e2e8f0}.wrap{max-width:1100px;margin:24px auto;padding:0 16px}.card{background:#1e293b;border-radius:12px;padding:16px;margin-bottom:16px}table{width:100%;border-collapse:collapse}th,td{padding:8px;text-align:right;border-bottom:1px solid #334155;font-size:12px}input,select{padding:8px;border-radius:6px;border:1px solid #334155;background:#0f172a;color:#e2e8f0}</style>
@@ -48,7 +48,7 @@ $rows=$pdo->query("SELECT w.customer_id, w.balance, c.email, c.status FROM walle
 ?>
 <tr>
 <td><?=$r['customer_id']?></td>
-<td><?=htmlspecialchars($r['email'])?><br><small style="color:#94a3b8"><?=$r['status']?></small></td>
+<td><b><?=htmlspecialchars($r['name']?:'—')?></b><br><small style="color:#94a3b8"><?=$r['status']?> <?php if(!empty($r['email'])) echo ' | '.htmlspecialchars($r['email']); ?></small></td>
 <td style="font-weight:800;color:#22c55e"><?=number_format($r['balance'])?></td>
 <td style="font-size:11px"><?php foreach($list as $t) echo htmlspecialchars($t['created_at']." ".$t['type']." ".number_format($t['amount'])." → ".number_format($t['balance_after']))."<br>"; if(!$list) echo "—";?></td>
 <td><a href="wallets.php?customer_id=<?=$r['customer_id']?>" style="color:#38bdf8">فیلتر</a> | <a href="customers.php" style="color:#94a3b8">مشتریان</a></td>

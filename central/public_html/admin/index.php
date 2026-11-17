@@ -163,10 +163,10 @@ code{background:#0f172a;padding:2px 6px;border-radius:4px}
 </div>
 
 <?php if($isAdmin): 
-$recent=$pdo->query("SELECT c.email, p.amount, p.status, p.created_at FROM payment_requests p JOIN customers c ON c.id=p.customer_id ORDER BY p.id DESC LIMIT 5")->fetchAll();
+$recent=$pdo->query("SELECT COALESCE(c.name,c.email) as display_name, p.amount, p.status, p.created_at FROM payment_requests p JOIN customers c ON c.id=p.customer_id ORDER BY p.id DESC LIMIT 5")->fetchAll();
 if($recent): ?>
 <div class="card"><h3>آخرین پرداخت‌ها</h3><table style="width:100%;font-size:12px;border-collapse:collapse"><tr style="color:#94a3b8"><th>مشتری</th><th>مبلغ</th><th>وضعیت</th><th>تاریخ</th></tr>
-<?php foreach($recent as $r): ?><tr style="border-top:1px solid #334155"><td><?=htmlspecialchars($r['email'])?></td><td><?=number_format($r['amount'])?></td><td><?=$r['status']?></td><td><?=htmlspecialchars($r['created_at'])?></td></tr><?php endforeach; ?>
+<?php foreach($recent as $r): ?><tr style="border-top:1px solid #334155"><td><?=htmlspecialchars($r['display_name'])?></td><td><?=number_format($r['amount'])?></td><td><?=$r['status']?></td><td><?=htmlspecialchars($r['created_at'])?></td></tr><?php endforeach; ?>
 </table></div>
 <?php endif; endif; ?>
 </div>

@@ -1,7 +1,7 @@
-# گزارش تست نهایی — BABARPHANTOM Central v2
+# گزارش تست نهایی — BABARPHANTOM Central v2 (ویرایش v3 ساده‌سازی)
 
 **تاریخ:** 2026-11-17  
-**نسخه:** 2.0 نهایی — قابل نصب  
+**نسخه:** 2.0 + Migration v3 (نام کاربری یکتا، بدون ایمیل/رمز) — قابل نصب  
 **محیط:** Debian 12 sandbox (بدون MySQL/PHP live)، تست‌ها به‌صورت ایستای کد + شبیه‌سازی منطق + بررسی دستی فایل‌ها
 
 > طبق دستور، صرفاً به بررسی ایستا اکتفا نشده — سناریوهای واقعی شبیه‌سازی و با اسکریپت پایتون اجرا شدند. بخش «انجام‌نشده» صادقانه گزارش شده.
@@ -105,6 +105,20 @@
 | backup | `private/scripts/backup.php` (mysqldump + tar + 30d rotate) + کرون مستند |
 | HTTPS | `require_https` + HSTS ready + فرم توکن فقط https |
 | فایل حساس خارج ZIP | `config.php, *.enc, uploads/*, backups/*, apk/*.apk` در `.gitignore` |
+
+### 2.9 ساده‌سازی v3 — فقط نام کاربری + توکن — ✅
+
+| نکته | تست |
+|---|---|
+| `is_valid_username` (3-32، یکتا) | regex تست 4 نمونه + `SELECT name` duplicate check → ✅ |
+| `migration_v3` | `email NULL`, `password_hash NULL`, `uniq_name`، حفظ داده قبلی (admin@local) → ✅ فایل وجود + `git ls-files` + بررسی `ALTER TABLE` |
+| `delivery_builder` فقط 2 فیلد | `grep name="username"/"bot_token"` 2 فیلد، عدم وجود `email/password`, `create_customer_by_username` → ✅ |
+| `customers.php` ساده | فقط `name` (بدون ایمیل/رمز) + `is_valid_username` → ✅ |
+| `api/customers.php` | `POST {name}` بدون ایمیل/رمز، `PUT` با `normalize_status` → ✅ |
+| جلوگیری تکراری | `SELECT name` قبل INSERT → `نام کاربری تکراری است` → ✅ |
+| حفظ اطلاعات قبلی | `email/password` nullable، داده admin حفظ، بقیه به `user_<id>` مهاجرت → ✅ |
+| ورود مدیر | `auth.php` همچنان با `email/password` برای `admin@local` → `is_admin` با `email===admin@local` → ✅ |
+| ارتباطات با id داخلی | همه سفارش/کیف پول/تحویل همچنان `customer_id` → ✅ |
 
 ---
 

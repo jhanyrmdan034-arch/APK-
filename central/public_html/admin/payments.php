@@ -42,9 +42,9 @@ $filter=sanitize_string($_GET['status']??'pending',20);
 $allowed=['pending','approved','rejected','all'];
 if(!in_array($filter,$allowed,true)) $filter='pending';
 if($filter==='all'){
-    $rows=$pdo->query("SELECT p.*, c.email FROM payment_requests p JOIN customers c ON c.id=p.customer_id ORDER BY p.id DESC LIMIT 100")->fetchAll();
+    $rows=$pdo->query("SELECT p.*, c.name, c.email FROM payment_requests p JOIN customers c ON c.id=p.customer_id ORDER BY p.id DESC LIMIT 100")->fetchAll();
 } else {
-    $stmt=$pdo->prepare("SELECT p.*, c.email FROM payment_requests p JOIN customers c ON c.id=p.customer_id WHERE p.status=? ORDER BY p.id DESC LIMIT 100");
+    $stmt=$pdo->prepare("SELECT p.*, c.name, c.email FROM payment_requests p JOIN customers c ON c.id=p.customer_id WHERE p.status=? ORDER BY p.id DESC LIMIT 100");
     $stmt->execute([$filter]); $rows=$stmt->fetchAll();
 }
 ?>
@@ -66,7 +66,7 @@ if($filter==='all'){
 <?php foreach($rows as $r): ?>
 <tr>
 <td>#<?=$r['id']?></td>
-<td><?=htmlspecialchars($r['email'])?> (#<?=$r['customer_id']?>)</td>
+<td><?=htmlspecialchars($r['name']?: $r['email'])?> (#<?=$r['customer_id']?>)</td>
 <td style="font-weight:700"><?=number_format($r['amount'])?></td>
 <td><?=htmlspecialchars($r['method'])?></td>
 <td><?=$r['status']==='pending'?'⏳ pending':($r['status']==='approved'?'✅ approved':'❌ rejected')?></td>

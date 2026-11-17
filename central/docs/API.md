@@ -19,8 +19,8 @@ Admin login. Body `{"email","password"}` → `{ok, customer, api_key, is_admin}`
 
 ### `GET/POST/PUT/DELETE /api/customers.php` (admin only)
 - `GET ?page=&per=&q=` — list (with devices/bots count)
-- `POST {"email","name","password","status":"ACTIVE|SUSPENDED|DISABLED"}` — create + wallet + api_key
-- `PUT {"id","name","status","password"}` — update
+- `POST {"name":"username","status":"ACTIVE|SUSPENDED|DISABLED"}` — **ساده‌شده v3: فقط نام کاربری یکتا** (بدون ایمیل/رمز) + wallet + api_key؛ ایمیل اختیاری برای سازگاری قدیمی
+- `PUT {"id","name","status"}` — update (نام یکتا)
 - `DELETE ?id=` — delete (cascade)
 
 ### `GET/POST/PUT/DELETE /api/devices.php`

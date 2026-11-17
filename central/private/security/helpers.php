@@ -64,6 +64,11 @@ function is_valid_email(string $e): bool { return filter_var($e, FILTER_VALIDATE
 function is_valid_bot_token(string $t): bool {
     return (bool) preg_match('/^\d{8,12}:[A-Za-z0-9_-]{30,}$/', $t);
 }
+function is_valid_username(string $u): bool {
+    // نام کاربری مشتری: 3-32 کاراکتر، حروف/عدد/underscore/خط تیره، بدون فاصله
+    // یکتا بودن در DB جداگانه چک می‌شود
+    return (bool) preg_match('/^[a-zA-Z0-9_\-\x{0600}-\x{06FF}]{3,32}$/u', $u);
+}
 function sanitize_string(string $s, int $max = 255): string {
     $s = trim($s);
     $s = mb_substr($s, 0, $max);
@@ -306,10 +311,20 @@ function ensure_customer_for_telegram(int $tgId, string $username='', string $fi
         }
         return $c;
     }
-    // create new customer with random email
+    // create new customer with random email (برای سازگاری)
     $uuid=generate_uuid();
     $email="tg_{$tgId}@sales.local";
-    $name=$firstName ?: $username ?: "کاربر $tgId";
+    $baseName=$firstName ?: $username ?: "کاربر_$tgId";
+    $name=$baseName;
+    // یکتاسازی نام کاربری
+    $i=0;
+    while (true) {
+        $chk=$pdo->prepare("SELECT id FROM customers WHERE name=? LIMIT 1");
+        $chk->execute([$name]);
+        if(!$chk->fetch()) break;
+        $i++; $name=$baseName.'_'.$i;
+        if($i>99) { $name=$baseName.'_'.$tgId; break; }
+    }
     $hash=password_hash(bin2hex(random_bytes(16)), PASSWORD_BCRYPT, ['cost'=>BCRYPT_COST]);
     $pdo->prepare("INSERT INTO customers (uuid,email,password_hash,name,status,telegram_id,telegram_username) VALUES (?,?,?,?,?,?,?)")
         ->execute([$uuid,$email,$hash,$name,STATUS_ACTIVE,$tgId,$username]);
@@ -319,4 +334,21 @@ function ensure_customer_for_telegram(int $tgId, string $username='', string $fi
     $pdo->prepare("INSERT INTO api_keys (customer_id,api_key) VALUES (?,?)")->execute([$id,$apiKey]);
     $stmt->execute([$tgId]);
     return $stmt->fetch();
+}
+function create_customer_by_username(string $username): array {
+    $pdo=db();
+    $username=sanitize_string($username,32);
+    if(!is_valid_username($username)) throw new RuntimeException('نام کاربری نامعتبر (3-32 حرف/عدد/زیرخط)');
+    $chk=$pdo->prepare("SELECT id FROM customers WHERE name=? LIMIT 1");
+    $chk->execute([$username]);
+    if($chk->fetch()) throw new RuntimeException('نام کاربری تکراری است');
+    $uuid=generate_uuid();
+    // ایمیل و رمز برای مشتری عادی NULL — فقط ادمین email/password دارد
+    $pdo->prepare("INSERT INTO customers (uuid,email,password_hash,name,status) VALUES (?,?,?,?,?)")
+        ->execute([$uuid,null,null,$username,'ACTIVE']);
+    $cid=(int)$pdo->lastInsertId();
+    $pdo->prepare("INSERT IGNORE INTO wallets (customer_id,balance) VALUES (?,0)")->execute([$cid]);
+    $apiKey=generate_api_key();
+    $pdo->prepare("INSERT INTO api_keys (customer_id,api_key,name) VALUES (?,?,?)")->execute([$cid,$apiKey,'manual_default']);
+    return ['id'=>$cid,'uuid'=>$uuid,'name'=>$username,'api_key'=>$apiKey];
 }

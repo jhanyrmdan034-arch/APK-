@@ -9,22 +9,18 @@ $msg=''; $msgErr=false;
 if ($_SERVER['REQUEST_METHOD']==='POST') {
     $action = $_POST['action'] ?? '';
     if ($action==='add') {
-        $email=sanitize_string($_POST['email']??'',255); $name=sanitize_string($_POST['name']??'',255);
-        $pass=$_POST['password']??''; $status=normalize_status($_POST['status']??'ACTIVE');
-        if (!is_valid_email($email)) {$msg='ایمیل نامعتبر';$msgErr=true;}
-        elseif (strlen($pass)<8) {$msg='رمز کوتاه است';$msgErr=true;}
+        $name=sanitize_string($_POST['name']??'',32);
+        $status=normalize_status($_POST['status']??'ACTIVE');
+        if (!is_valid_username($name)) {$msg='نام کاربری نامعتبر (3-32 حرف/عدد/زیرخط)';$msgErr=true;}
         elseif (!in_array($status,[STATUS_ACTIVE,STATUS_SUSPENDED,STATUS_DISABLED],true)) {$msg='وضعیت نامعتبر';$msgErr=true;}
         else {
             try {
-                $uuid=generate_uuid();
-                $hash=password_hash($pass,PASSWORD_BCRYPT,['cost'=>BCRYPT_COST]);
-                $pdo->prepare("INSERT INTO customers (uuid,email,password_hash,name,status) VALUES (?,?,?,?,?)")->execute([$uuid,$email,$hash,$name,$status]);
-                $id=(int)$pdo->lastInsertId();
-                $apiKey=generate_api_key();
-                $pdo->prepare("INSERT INTO api_keys (customer_id,api_key) VALUES (?,?)")->execute([$id,$apiKey]);
-                $pdo->prepare("INSERT IGNORE INTO wallets (customer_id,balance) VALUES (?,0)")->execute([$id]);
-                admin_log((int)$me['id'],'customer_created','customer',$id,['email'=>$email]);
-                $msg="مشتری #$id ساخته شد — API Key: $apiKey — لینک توکن امن: ".APP_URL."/token.php?t=[از ربات فروش بگیرید]";
+                $cust=create_customer_by_username($name);
+                $id=$cust['id'];
+                // اگر وضعیت غیر ACTIVE بود، به‌روزرسانی
+                if($status!=='ACTIVE') $pdo->prepare("UPDATE customers SET status=? WHERE id=?")->execute([$status,$id]);
+                admin_log((int)$me['id'],'customer_created','customer',$id,['username'=>$name]);
+                $msg="مشتری '$name' (#$id) ساخته شد — API Key: {$cust['api_key']}";
             } catch (Throwable $e){ $msg='خطا: '.htmlspecialchars($e->getMessage());$msgErr=true; }
         }
     } elseif ($action==='status') {
@@ -32,8 +28,6 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
         $pdo->prepare("UPDATE customers SET status=? WHERE id=?")->execute([$new,$id]);
         admin_log((int)$me['id'],'customer_status_change','customer',$id,['new_status'=>$new]);
         $msg="وضعیت مشتری #$id به $new تغییر کرد.";
-        // اگر DISABLED/SUSPENDED، تمام api_keys غیرفعال؟ نه، فقط status چک می‌شود
-        // ولی برای قطع فوری دسترسی دستگاه‌ها: is_active devices را هم می‌توان false کرد — اختیاری
         if($new===STATUS_DISABLED || $new===STATUS_SUSPENDED){
             $pdo->prepare("UPDATE devices SET is_active=0 WHERE customer_id=?")->execute([$id]);
         } elseif($new===STATUS_ACTIVE){
@@ -48,16 +42,11 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
         $pdo->prepare("UPDATE telegram_bots SET is_connected=0 WHERE customer_id=?")->execute([$id]);
         admin_log((int)$me['id'],'bot_disconnected','bot',$id,[]);
         $msg="ربات مشتری #$id قطع شد.";
-    } elseif ($action==='block_device') {
-        $did=(int)($_POST['device_id']??0);
-        $pdo->prepare("UPDATE devices SET is_active=0 WHERE id=?")->execute([$did]);
-        admin_log((int)$me['id'],'device_blocked','device',$did,[]);
-        $msg="دستگاه #$did مسدود شد.";
     }
 }
 $q=sanitize_string($_GET['q']??'',100);
 if($q!==''){
-    $stmt=$pdo->prepare("SELECT id,uuid,email,name,status,telegram_id,created_at FROM customers WHERE email LIKE ? OR name LIKE ? ORDER BY id DESC");
+    $stmt=$pdo->prepare("SELECT id,uuid,email,name,status,telegram_id,created_at FROM customers WHERE name LIKE ? OR email LIKE ? ORDER BY id DESC");
     $like="%$q%"; $stmt->execute([$like,$like]);
 } else {
     $stmt=$pdo->query("SELECT id,uuid,email,name,status,telegram_id,created_at FROM customers ORDER BY id DESC");
@@ -69,32 +58,32 @@ $rows=$stmt->fetchAll();
 </head><body>
 <div class="nav"><b><?=htmlspecialchars(APP_NAME)?></b><a href="index.php">داشبورد</a><a class="active" href="customers.php">مشتریان</a><a href="wallets.php">کیف پول</a><a href="payments.php">پرداخت‌ها</a><a href="orders.php">سفارش‌ها</a><a href="bots.php">ربات‌ها</a><a href="devices.php">دستگاه‌ها</a><a href="delivery_builder.php">ساخت دستی</a><a href="apk.php">APK</a><a href="settings.php">تنظیمات</a></div>
 <div class="wrap">
-<h1>مدیریت مشتریان — وضعیت مستقل</h1>
+<h1>مدیریت مشتریان — نام کاربری یکتا</h1>
 <?php if($msg): ?><div class="card" style="background:<?=$msgErr?'#7f1d1d':'#14532d'?>"><?=htmlspecialchars($msg)?></div><?php endif; ?>
 <div class="card">
-<h3>افزودن مشتری جدید</h3>
+<h3>افزودن مشتری (بدون ایمیل و رمز)</h3>
 <form method="post"><input type="hidden" name="action" value="add">
-<input name="email" placeholder="ایمیل" required> <input name="name" placeholder="نام">
-<input type="password" name="password" placeholder="رمز عبور (حداقل ۸)" required>
+<input name="name" placeholder="نام کاربری (مثال: ali_123)" required maxlength="32" dir="ltr">
 <select name="status"><option value="ACTIVE">ACTIVE فعال</option><option value="SUSPENDED">SUSPENDED تعلیق</option><option value="DISABLED">DISABLED غیرفعال</option></select>
 <button class="btn2" type="submit">افزودن</button>
 </form>
-<p style="font-size:11px;color:#94a3b8">ACTIVE: دسترسی کامل | SUSPENDED: فقط مشاهده (API مسدود) | DISABLED: قطع کامل. تغییر وضعیت از طریق سرور مرکزی انجام می‌شود.</p>
+<p style="font-size:11px;color:#94a3b8">نام کاربری یکتا (3-32 حرف/عدد/زیرخط). ایمیل/رمز برای مشتری عادی لازم نیست — فقط مدیر با ایمیل/رمز وارد پنل می‌شود. شناسه داخلی (id/uuid) برای سفارش‌ها استفاده می‌شود.</p>
 </div>
 <div class="card">
-<form method="get"><input name="q" placeholder="جستجو ایمیل/نام" value="<?=htmlspecialchars($q)?>"><button>جستجو</button> <a href="customers.php" style="color:#38bdf8">نمایش همه</a></form>
+<form method="get"><input name="q" placeholder="جستجو نام کاربری" value="<?=htmlspecialchars($q)?>"><button>جستجو</button> <a href="customers.php" style="color:#38bdf8">نمایش همه</a></form>
 </div>
 <div class="card" style="overflow:auto">
-<table><tr><th>ID</th><th>ایمیل / نام / تلگرام</th><th>وضعیت</th><th>کیف پول</th><th>دستگاه/ربات</th><th>عملیات دسترسی</th></tr>
+<table><tr><th>ID</th><th>نام کاربری / تلگرام</th><th>وضعیت</th><th>کیف پول</th><th>دستگاه/ربات</th><th>عملیات</th></tr>
 <?php foreach($rows as $r):
  $w=$pdo->prepare("SELECT balance FROM wallets WHERE customer_id=?"); $w->execute([$r['id']]); $bal=$w->fetchColumn();
  $dc=$pdo->prepare("SELECT COUNT(*) FROM devices WHERE customer_id=?"); $dc->execute([$r['id']]); $dcc=(int)$dc->fetchColumn();
  $bc=$pdo->prepare("SELECT COUNT(*) FROM telegram_bots WHERE customer_id=?"); $bc->execute([$r['id']]); $bcc=(int)$bc->fetchColumn();
  $status=$r['status']; $color=$status==='ACTIVE'?'#22c55e':($status==='SUSPENDED'?'#f59e0b':'#ef4444');
+ $displayName = $r['name'] ?: ('user_'.$r['id']);
 ?>
 <tr>
 <td><?=$r['id']?><br><code style="font-size:10px"><?=htmlspecialchars(substr($r['uuid'],0,8))?>…</code></td>
-<td><?=htmlspecialchars($r['email'])?><br><small style="color:#94a3b8"><?=htmlspecialchars($r['name'])?> | tg:<?=htmlspecialchars($r['telegram_id']??'—')?></small></td>
+<td><b><?=htmlspecialchars($displayName)?></b><br><small style="color:#94a3b8">tg:<?=htmlspecialchars($r['telegram_id']??'—')?> <?php if(!empty($r['email'])) echo ' | '.htmlspecialchars($r['email']); ?></small></td>
 <td><span style="background:<?=$color?>;color:#000;padding:2px 8px;border-radius:10px;font-weight:700;font-size:11px"><?=$status?></span></td>
 <td><?=number_format((int)($bal?:0))?></td>
 <td>📱<?=$dcc?> 🤖<?=$bcc?></td>
@@ -102,7 +91,6 @@ $rows=$stmt->fetchAll();
 <form method="post"><input type="hidden" name="action" value="status"><input type="hidden" name="id" value="<?=$r['id']?>"><select name="new_status"><option value="ACTIVE" <?=$status==='ACTIVE'?'selected':''?>>ACTIVE</option><option value="SUSPENDED" <?=$status==='SUSPENDED'?'selected':''?>>SUSPENDED</option><option value="DISABLED" <?=$status==='DISABLED'?'selected':''?>>DISABLED</option></select><button style="background:#334155;color:#e2e8f0">اعمال</button></form>
 <form method="post"><input type="hidden" name="action" value="disconnect_bot"><input type="hidden" name="id" value="<?=$r['id']?>"><button style="background:#f59e0b;color:#000">قطع ربات</button></form>
 <a href="wallets.php?customer_id=<?=$r['id']?>" style="background:#38bdf8;color:#082f49;padding:6px 8px;border-radius:6px;text-decoration:none;font-size:11px">کیف پول</a>
-<a href="bots.php?customer_id=<?=$r['id']?>" style="background:#334155;color:#e2e8f0;padding:6px 8px;border-radius:6px;text-decoration:none;font-size:11px">ربات</a>
 <form method="post" onsubmit="return confirm('حذف؟')"><input type="hidden" name="action" value="delete"><input type="hidden" name="id" value="<?=$r['id']?>"><button class="btn3">حذف</button></form>
 </td>
 </tr>

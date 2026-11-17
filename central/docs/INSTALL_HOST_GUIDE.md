@@ -27,12 +27,14 @@
 4. کاربر را به دیتابیس اضافه و تیک **ALL PRIVILEGES** بزنید.
 5. وارد **phpMyAdmin** → دیتابیس جدید را انتخاب → تب **Import** → فایل `private/database/schema.sql` را آپلود → **Go**.
 6. دوباره **Import** → فایل `private/database/migration_v2_sales_platform.sql` → **Go**.
-7. در **SQL** این را بزنید برای اطمینان:
+7. سپس **Import** → فایل `private/database/migration_v3_simplify_customer.sql` → **Go** (ساده‌سازی نام کاربری — بدون حذف اطلاعات).
+8. در **SQL** این را بزنید برای اطمینان:
    ```sql
    SHOW TABLES;
    -- باید 17 جدول ببینید
-   SELECT email,status FROM customers;
-   -- باید admin@local ACTIVE باشد
+   SELECT name,status FROM customers;
+   -- باید admin@local (یا Administrator) ACTIVE باشد
+   -- ستون name یکتا است، email/password برای مشتریان عادی NULL
    ```
 
 ---
@@ -216,7 +218,7 @@ php private/scripts/backup.php
 | شارژ | منو `شارژ 10000` → رسید بفرست → در `payments.php` تأیید → کیف پول شارژ شود |
 | سفارش | `سفارش phantom_basic` (یا در `orders.php`) → اگر موجودی کافی، تحویل خودکار |
 | فرم توکن | `bots.php → ایجاد لینک امن` → کلیک → توکن @BotFather را وارد → `@username متصل` |
-| تحویل دستی | `ساخت دستی → انتخاب مشتری + توکن + APK → ساخت بسته → لینک دانلود → ارسال از طریق ربات` |
+| تحویل دستی | `ساخت دستی → نام کاربری + توکن + APK → ساخت مشتری و بسته (فقط 2 فیلد) → لینک دانلود → ارسال ربات` |
 | جداسازی | با دو مشتری تست: هر کدام فقط داده خود را ببیند |
 | دسترسی | در `customers.php` یک مشتری را `SUSPENDED` → API آن 403 → دوباره `ACTIVE` → درست شود |
 | لغو لینک | در `ساخت دستی → لغو لینک` → لینک قبلی 410 شود |
@@ -234,7 +236,7 @@ php private/scripts/backup.php
 | `public_html/token.php` | `/public_html/token.php` |
 | `public_html/.htaccess` | `/public_html/.htaccess` |
 | `private/config/config.sample.php` | `/private/config/config.sample.php` → کپی به `config.php` |
-| `private/database/*.sql` | `/private/database/` (فقط برای Import اولیه) |
+| `private/database/*.sql` (شامل `migration_v3_simplify_customer.sql`) | `/private/database/` (سه فایل را به‌ترتیب Import کنید) |
 | `private/security/helpers.php` | `/private/security/` |
 | `private/telegram/sales_bot.php` | `/private/telegram/` |
 | `private/scripts/backup.php` | `/private/scripts/` |

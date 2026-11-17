@@ -39,7 +39,8 @@ BABARPHANTOM_Central_v2.zip
 │   │   └── config.sample.php       نمونه — کپی به config.php و پر کنید
 │   ├── database/
 │   │   ├── schema.sql              اسکیما پایه 8 جدول
-│   │   └── migration_v2_sales_platform.sql  9 جدول جدید + wallets/orders/apk
+│   │   ├── migration_v2_sales_platform.sql  9 جدول جدید + wallets/orders/apk
+│   │   └── migration_v3_simplify_customer.sql  ساده‌سازی: email/password nullable، username یکتا
 │   ├── security/
 │   │   └── helpers.php             DB, AES-256-GCM, auth, wallet, token-form, APK, sales bots
 │   ├── telegram/

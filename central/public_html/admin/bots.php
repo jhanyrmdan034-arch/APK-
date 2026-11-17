@@ -86,7 +86,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
 }
 
 $s=$pdo->prepare("SELECT id, bot_username, is_connected, last_checked_at, last_error, created_at FROM telegram_bots WHERE customer_id=? LIMIT 1"); $s->execute([$cid]); $bot=$s->fetch();
-$targetEmail = $pdo->prepare("SELECT email FROM customers WHERE id=?"); $targetEmail->execute([$cid]); $targetEmail=$targetEmail->fetchColumn();
+$targetEmail = $pdo->prepare("SELECT COALESCE(name,email) FROM customers WHERE id=?"); $targetEmail->execute([$cid]); $targetEmail=$targetEmail->fetchColumn();
 $targetStatus = $pdo->prepare("SELECT status FROM customers WHERE id=?"); $targetStatus->execute([$cid]); $targetStatus=$targetStatus->fetchColumn();
 ?>
 <!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ربات‌ها</title>
