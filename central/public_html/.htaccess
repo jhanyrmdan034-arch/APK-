@@ -1,0 +1,29 @@
+# BABARPHANTOM Central — public_html/.htaccess
+# Requires Apache + mod_rewrite. For Nginx, translate to equivalent.
+
+Options -Indexes
+RewriteEngine On
+
+# Force HTTPS in production (uncomment on host with valid cert)
+# RewriteCond %{HTTPS} off
+# RewriteCond %{HTTP:X-Forwarded-Proto} !https
+# RewriteRule ^(.*)$ https://%{HTTP_HOST}/$1 [R=301,L]
+
+# Security headers
+<IfModule mod_headers.c>
+  Header always set X-Content-Type-Options "nosniff"
+  Header always set X-Frame-Options "DENY"
+  Header always set Referrer-Policy "no-referrer"
+  Header always set Permissions-Policy "camera=(), microphone=(), geolocation=()"
+  # HSTS — enable only after HTTPS is confirmed working
+  # Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains"
+</IfModule>
+
+# Deny access to sensitive files
+<FilesMatch "^(config|\.env|\.git)">
+  Require all denied
+</FilesMatch>
+
+# PHP settings (if allowed)
+# php_flag display_errors off
+# php_value error_log ../private/logs/php_error.log

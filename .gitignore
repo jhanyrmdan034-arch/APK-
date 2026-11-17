@@ -7,3 +7,12 @@ backup/
 *.pem
 .DS_Store
 apk_explore/
+# Central secrets — never commit real keys/tokens
+central/private/config/config.php
+central/private/telegram_tokens/
+central/private/logs/
+*.enc
+# Large APK reference (local only)
+*.zip
+*.apk
+!tools/*.apk
