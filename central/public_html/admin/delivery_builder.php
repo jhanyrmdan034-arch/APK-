@@ -166,6 +166,19 @@ $recentDeliveries=$pdo->query("SELECT d.id, d.delivery_token, d.api_key, d.downl
 
 <div class="card">
 <h3>ساخت مشتری و بسته تحویل</h3>
+<?php if(!$apkFiles): ?>
+<div style="background:#7f1d1d;padding:10px;border-radius:8px;margin:6px 0;font-size:12px">⚠️ هنوز APK آپلود نشده — اول همینجا آپلود کن (بعد خودش میاد تو لیست):</div>
+<form method="post" enctype="multipart/form-data" style="background:#0f172a;padding:12px;border-radius:10px;margin:6px 0;border:1px solid #f59e0b">
+<input type="hidden" name="action" value="upload_apk">
+<div style="display:flex;gap:6px;flex-wrap:wrap">
+<input name="version" placeholder="نسخه مثل 1.0.0" value="1.0.0" required style="flex:1">
+<input name="version_code" type="number" value="1" min="1" style="width:90px">
+</div>
+<input type="file" name="apk" accept=".apk,application/vnd.android.package-archive" required style="margin-top:6px">
+<button style="background:#f59e0b;color:#000;width:100%;margin-top:8px">📤 آپلود سریع APK همینجا</button>
+</form>
+<p style="text-align:center;color:#94a3b8;font-size:11px">یا از <a href="apk.php" style="color:#38bdf8">صفحه APK</a> آپلود کن</p>
+<?php endif; ?>
 <form method="post">
 <input type="hidden" name="action" value="build">
 <label>نام کاربری مشتری *</label>
@@ -177,19 +190,6 @@ $recentDeliveries=$pdo->query("SELECT d.id, d.delivery_token, d.api_key, d.downl
 <small style="color:#fbbf24">⚠️ فقط سرور ذخیره رمزنگاری می‌کند؛ در APK/لینک/لاگ plaintext نمی‌ماند. اعتبارسنجی با getMe انجام می‌شود.</small>
 
 <label>فایل APK عمومی *</label>
-<?php if(!$apkFiles): ?>
-<div style="background:#7f1d1d;padding:10px;border-radius:8px;margin:6px 0;font-size:12px">⚠️ هنوز APK آپلود نشده — همینجا آپلود کن:</div>
-<form method="post" enctype="multipart/form-data" style="background:#0f172a;padding:10px;border-radius:8px;margin:6px 0">
-<input type="hidden" name="action" value="upload_apk">
-<div style="display:flex;gap:6px;flex-wrap:wrap">
-<input name="version" placeholder="نسخه مثل 1.0.0" value="1.0.0" required style="flex:1">
-<input name="version_code" type="number" value="1" min="1" style="width:90px">
-</div>
-<input type="file" name="apk" accept=".apk,application/vnd.android.package-archive" required>
-<button style="background:#f59e0b;color:#000;width:100%;margin-top:6px">📤 آپلود سریع APK همینجا</button>
-</form>
-<p style="text-align:center;color:#94a3b8;font-size:11px">یا از <a href="apk.php" style="color:#38bdf8">صفحه APK</a> آپلود کن</p>
-<?php endif; ?>
 <select name="apk_id" required>
 <option value="">— انتخاب کنید —</option>
 <?php foreach($apkFiles as $a): ?>
