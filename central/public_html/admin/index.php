@@ -109,7 +109,7 @@ code{background:#0f172a;padding:2px 6px;border-radius:4px}
 <?php endif; ?>
 <a href="bots.php">ربات‌ها</a>
 <a href="devices.php">دستگاه‌ها</a>
-<?php if($isAdmin): ?><a href="delivery_builder.php">ساخت دستی</a><a href="apk.php">APK</a><a href="logs.php">گزارش‌ها</a><?php endif; ?>
+<?php if($isAdmin): ?><a href="delivery_builder.php">ساخت دستی</a><a href="apk.php">APK</a><a href="template.php">قالب دلخواه</a><a href="logs.php">گزارش‌ها</a><?php endif; ?>
 <a href="settings.php">تنظیمات</a>
 <a href="?logout=1" style="margin-right:auto;background:#7f1d1d;color:#fecaca">خروج (<?=htmlspecialchars($me['email'])?>)</a>
 </div>
