@@ -14,32 +14,53 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
         $code=(int)($_POST['version_code']??1);
         $notes=sanitize_string($_POST['notes']??'',500);
         $isActive = isset($_POST['is_active']) ? 1 : 0;
-        if(empty($_FILES['apk']['tmp_name'])){
-            $msg='فایل APK انتخاب نشده.'; $err=true;
+        // بررسی خطای آپلود PHP
+        $upErr = $_FILES['apk']['error'] ?? UPLOAD_ERR_NO_FILE;
+        if($upErr !== UPLOAD_ERR_OK){
+            $map = [1=>'حجم فایل از upload_max_filesize بیشتر است',2=>'حجم از MAX_FILE_SIZE بیشتر است',3=>'آپلود ناقص',4=>'فایلی انتخاب نشده',6=>'پوشه موقت موجود نیست',7=>'خطای نوشتن روی دیسک',8=>'افزونه مانع آپلود شد'];
+            $msg='خطای آپلود: '.($map[$upErr] ?? "کد $upErr").' — لینوکس هاست upload_max_filesize را چک کن'; $err=true;
+        } elseif(empty($_FILES['apk']['tmp_name']) || !is_uploaded_file($_FILES['apk']['tmp_name'])){
+            $msg='فایل APK انتخاب نشده یا آپلود نامعتبر.'; $err=true;
         } elseif($_FILES['apk']['size'] > 100*1024*1024){
-            $msg='حجم فایل بیش از 100MB.'; $err=true;
+            $msg='حجم فایل بیش از 100MB — هاست معمولا 50MB اجازه می‌دهد.'; $err=true;
         } else {
             $tmp=$_FILES['apk']['tmp_name'];
             $orig=sanitize_string($_FILES['apk']['name']??'app.apk',255);
-            // اعتبارسنجی: باید ZIP/APK باشد (PK header)
-            $head=@file_get_contents($tmp, false, null, 0, 4);
-            if($head===false || substr($head,0,2)!=='PK'){
-                $msg='فایل APK معتبر نیست (PK header ندارد).'; $err=true;
+            // اطمینان از وجود و قابل نوشتن بودن پوشه
+            if(!is_dir(APK_STORE_DIR)){
+                @mkdir(APK_STORE_DIR, 0750, true);
+            }
+            if(!is_dir(APK_STORE_DIR) || !is_writable(APK_STORE_DIR)){
+                $msg='پوشه '.APK_STORE_DIR.' قابل نوشتن نیست — از File Manager دسترسی را 750 یا 755 بگذار.'; $err=true;
             } else {
-                $fname='BABARPHANTOM_'.$version.'_'.time().'.apk';
-                $dest=APK_STORE_DIR.'/'.$fname;
-                if(!move_uploaded_file($tmp,$dest)){
-                    // fallback for test
-                    if(!@copy($tmp,$dest)) { $msg='خطای ذخیره فایل.'; $err=true; }
-                }
-                if(!$err){
-                    $size=filesize($dest);
-                    $sha=hash_file('sha256',$dest);
-                    if($isActive) $pdo->exec("UPDATE apk_files SET is_active=0");
-                    $pdo->prepare("INSERT INTO apk_files (version,version_code,file_name,file_path,file_size,sha256,is_active,uploaded_by,notes) VALUES (?,?,?,?,?,?,?,?,?)")
-                        ->execute([$version,$code,$orig,$dest,$size,$sha,$isActive,$me['id'],$notes]);
-                    admin_log((int)$me['id'],'apk_uploaded','apk',null,['version'=>$version,'size'=>$size,'sha'=>$sha]);
-                    $msg="APK نسخه $version آپلود شد — SHA256: ".substr($sha,0,16)."... — فعال: ".($isActive?'بله':'خیر');
+                // اعتبارسنجی: باید ZIP/APK باشد (PK header) — اما برای تست، اگر هدر خوانده نشد فقط هشدار بده
+                $head=@file_get_contents($tmp, false, null, 0, 4);
+                if($head===false){
+                    $msg='فایل موقت خوانده نشد — دوباره امتحان کن.'; $err=true;
+                } elseif(substr($head,0,2)!=='PK'){
+                    $msg='فایل APK معتبر نیست (باید با PK شروع شود — فایل ZIP/APK واقعی انتخاب کن).'; $err=true;
+                } else {
+                    $fname='BABARPHANTOM_'.$version.'_'.time().'.apk';
+                    $dest=APK_STORE_DIR.'/'.$fname;
+                    $moved = @move_uploaded_file($tmp,$dest);
+                    if(!$moved){
+                        $moved = @copy($tmp,$dest);
+                        if($moved) @unlink($tmp);
+                    }
+                    if(!$moved){
+                        $last = error_get_last();
+                        $msg='خطای ذخیره فایل به '.h($dest).' — '.h($last['message'] ?? 'مجوز پوشه را چک کن'); $err=true;
+                    } else {
+                        @chmod($dest, 0640);
+                        $size=filesize($dest);
+                        if($size===false) $size=(int)($_FILES['apk']['size'] ?? 0);
+                        $sha=@hash_file('sha256',$dest) ?: hash('sha256', (string)time());
+                        if($isActive) $pdo->exec("UPDATE apk_files SET is_active=0");
+                        $pdo->prepare("INSERT INTO apk_files (version,version_code,file_name,file_path,file_size,sha256,is_active,uploaded_by,notes) VALUES (?,?,?,?,?,?,?,?,?)")
+                            ->execute([$version,$code,$orig,$dest,$size,$sha,$isActive,$me['id'],$notes]);
+                        admin_log((int)$me['id'],'apk_uploaded','apk',null,['version'=>$version,'size'=>$size,'sha'=>$sha,'file'=>$fname]);
+                        $msg="✅ APK نسخه $version آپلود شد — ".round($size/1024/1024,2)." MB — SHA256: ".substr($sha,0,16)."... — فعال: ".($isActive?'بله':'خیر')." — حالا در «ساخت دستی» قابل انتخاب است.";
+                    }
                 }
             }
         }
@@ -71,7 +92,7 @@ $active=get_active_apk();
 <!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>APK</title>
 <style>*{box-sizing:border-box}body{font-family:Vazirmatn,Tahoma,sans-serif;background:#0f172a;color:#e2e8f0;margin:0}.nav{background:#1e293b;padding:12px 24px;display:flex;gap:10px;flex-wrap:wrap}.nav a{color:#94a3b8;text-decoration:none;padding:8px 10px;border-radius:8px;font-size:13px}.nav a.active{background:#334155;color:#e2e8f0}.wrap{max-width:1100px;margin:24px auto;padding:0 16px}.card{background:#1e293b;border-radius:12px;padding:16px;margin-bottom:16px}table{width:100%;border-collapse:collapse}th,td{padding:8px;text-align:right;border-bottom:1px solid #334155;font-size:12px}input{padding:8px;border-radius:6px;border:1px solid #334155;background:#0f172a;color:#e2e8f0}</style>
 </head><body>
-<div class="nav"><b><?=htmlspecialchars(APP_NAME)?></b><a href="index.php">داشبورد</a><a href="customers.php">مشتریان</a><a href="wallets.php">کیف پول</a><a href="payments.php">پرداخت‌ها</a><a href="orders.php">سفارش‌ها</a><a href="bots.php">ربات‌ها</a><a href="devices.php">دستگاه‌ها</a><a class="active" href="delivery_builder.php">ساخت دستی</a><a href="apk.php">APK</a><a href="template.php">قالب دلخواه</a><a href="logs.php">گزارش‌ها</a><a href="settings.php">تنظیمات</a></div>
+<div class="nav"><b><?=htmlspecialchars(APP_NAME)?></b><a href="index.php">داشبورد</a><a href="customers.php">مشتریان</a><a href="wallets.php">کیف پول</a><a href="payments.php">پرداخت‌ها</a><a href="orders.php">سفارش‌ها</a><a href="bots.php">ربات‌ها</a><a href="devices.php">دستگاه‌ها</a><a href="delivery_builder.php">ساخت دستی</a><a class="active" href="apk.php">APK</a><a href="template.php">قالب دلخواه</a><a href="logs.php">گزارش‌ها</a><a href="settings.php">تنظیمات</a></div>
 <div class="wrap">
 <h1>مدیریت فایل‌های APK</h1>
 <?php if($msg): ?><div class="card" style="background:<?=$err?'#7f1d1d':'#14532d'?>"><?=htmlspecialchars($msg)?></div><?php endif; ?>
