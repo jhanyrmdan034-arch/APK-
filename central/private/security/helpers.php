@@ -3,6 +3,24 @@ declare(strict_types=1);
 
 require_once dirname(__DIR__) . '/config/config.php';
 
+// helper for HTML escaping (used in admin pages — previously missing caused fatal on upload error)
+if (!function_exists('h')) {
+    function h($s): string { return htmlspecialchars((string)$s, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); }
+}
+// fallback constants if config.php is sample (for repo tests and editor)
+if (!defined('PRIVATE_ROOT')) define('PRIVATE_ROOT', dirname(__DIR__));
+if (!defined('APK_STORE_DIR')) define('APK_STORE_DIR', PRIVATE_ROOT . '/apk');
+if (!defined('UPLOAD_DIR')) define('UPLOAD_DIR', PRIVATE_ROOT . '/uploads');
+if (!defined('LOG_DIR')) define('LOG_DIR', PRIVATE_ROOT . '/logs');
+if (!defined('TOKEN_STORE_DIR')) define('TOKEN_STORE_DIR', PRIVATE_ROOT . '/telegram_tokens');
+if (!defined('SECURITY_LOG')) define('SECURITY_LOG', LOG_DIR . '/security.log');
+if (!defined('UPLOAD_MAX_BYTES')) define('UPLOAD_MAX_BYTES', 50*1024*1024);
+if (!defined('APP_URL')) define('APP_URL', 'https://example.com');
+if (!defined('APK_DELIVERY_EXPIRES_DAYS')) define('APK_DELIVERY_EXPIRES_DAYS', 30);
+if (!defined('DB_CHARSET')) define('DB_CHARSET', 'utf8mb4');
+if (!defined('SESSION_NAME')) define('SESSION_NAME', 'BABAR_SESS');
+if (!defined('API_RATE_LIMIT_PER_MINUTE')) define('API_RATE_LIMIT_PER_MINUTE', 60);
+
 /**
  * Helpers — encryption, validation, rate limiting, logging, wallets, orders, token-forms
  */
