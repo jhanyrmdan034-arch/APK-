@@ -9,36 +9,56 @@ $msg=''; $err=false; $result=null;
 
 // --- آپلود سریع APK در همین صفحه (برای راحتی) ---
 if (($_POST['action'] ?? '') === 'upload_apk') {
-    $version = sanitize_string($_POST['version'] ?? '', 32) ?: '1.0.0';
-    $code = (int)($_POST['version_code'] ?? 1);
-    $isActive = 1;
-    $upErr = $_FILES['apk']['error'] ?? UPLOAD_ERR_NO_FILE;
-    if ($upErr !== UPLOAD_ERR_OK) {
-        $map = [1=>'حجم بیش از upload_max_filesize',2=>'حجم بیش از MAX_FILE_SIZE',3=>'ناقص',4=>'فایلی انتخاب نشده',6=>'پوشه موقت نیست',7=>'خطای دیسک',8=>'افزونه'];
-        $msg='خطای آپلود APK: '.($map[$upErr] ?? "کد $upErr"); $err=true;
-    } elseif (empty($_FILES['apk']['tmp_name']) || !is_uploaded_file($_FILES['apk']['tmp_name'])) {
-        $msg='فایل APK انتخاب نشده'; $err=true;
+    // اگر POST خالی به خاطر post_max_size باشد
+    if (empty($_POST) && empty($_FILES) && ($_SERVER['CONTENT_LENGTH'] ?? 0) > 0) {
+        $msg = 'حجم فایل از حد مجاز هاست ('.ini_get('post_max_size').'/'.ini_get('upload_max_filesize').') بیشتر است — فایل کوچکتر انتخاب کن یا با File Manager دستی بریز به private/apk'; $err=true;
     } else {
-        $tmp = $_FILES['apk']['tmp_name'];
-        if (!is_dir(APK_STORE_DIR)) @mkdir(APK_STORE_DIR, 0775, true);
-        if (!is_writable(APK_STORE_DIR)) @chmod(APK_STORE_DIR, 0775);
-        $head = @file_get_contents($tmp, false, null, 0, 2);
-        if ($head === false || substr($head,0,2) !== 'PK') { $msg='فایل APK معتبر نیست (PK header ندارد)'; $err=true; }
-        else {
-            $fname='BABARPHANTOM_'.$version.'_'.time().'.apk';
-            $dest=(is_writable(APK_STORE_DIR)?APK_STORE_DIR:(__DIR__.'/../uploads_apk')).'/'.$fname;
-            if (!is_dir(dirname($dest))) @mkdir(dirname($dest),0775,true);
-            $moved=@move_uploaded_file($tmp,$dest) ?: @copy($tmp,$dest);
-            if (!$moved && is_readable($tmp)) { $d=@file_get_contents($tmp); if($d!==false) $moved=@file_put_contents($dest,$d)!==false; }
-            if (!$moved) { $msg='ذخیره ناموفق — مجوز پوشه private/apk را 0755 کن'; $err=true; }
+        $version = sanitize_string($_POST['version'] ?? '', 32) ?: '1.0.0';
+        $code = (int)($_POST['version_code'] ?? 1);
+        $isActive = 1;
+        $upErr = $_FILES['apk']['error'] ?? UPLOAD_ERR_NO_FILE;
+        if ($upErr !== UPLOAD_ERR_OK) {
+            $map = [1=>'حجم بیش از upload_max_filesize ('.ini_get('upload_max_filesize').')',2=>'حجم بیش از MAX_FILE_SIZE',3=>'آپلود ناقص',4=>'فایلی انتخاب نشده — دوباره فایل را انتخاب کن',6=>'پوشه موقت سرور موجود نیست (با پشتیبانی تماس بگیر)',7=>'خطای نوشتن روی دیسک — فضای هاست پر است',8=>'افزونه مانع شد'];
+            $msg='❌ خطای آپلود APK: '.($map[$upErr] ?? "کد $upErr — فایل به سرور نرسید"); $err=true;
+            // لاگ برای دیباگ
+            @file_put_contents($privateRoot . '/logs/upload.log', date('c')." upload_err $upErr size=".($_FILES['apk']['size']??0)." err_msg=".($map[$upErr]??'')." post_len=".($_SERVER['CONTENT_LENGTH']??0)."\n", FILE_APPEND);
+        } elseif (empty($_FILES['apk']['tmp_name']) || !is_uploaded_file($_FILES['apk']['tmp_name'])) {
+            $msg='❌ فایل APK انتخاب نشده یا مرورگر فایل را نفرستاد — دوباره انتخاب کن (از Downloads گوشی)'; $err=true;
+        } else {
+            $tmp = $_FILES['apk']['tmp_name'];
+            $origName = $_FILES['apk']['name'] ?? 'app.apk';
+            if (!is_dir(APK_STORE_DIR)) @mkdir(APK_STORE_DIR, 0775, true);
+            if (!is_writable(APK_STORE_DIR)) @chmod(APK_STORE_DIR, 0775);
+            @chmod(dirname(APK_STORE_DIR), 0775);
+            $head = @file_get_contents($tmp, false, null, 0, 2);
+            if ($head === false) { $msg='❌ فایل موقت خوانده نشد — دوباره امتحان کن یا گوشی را ریستارت کن'; $err=true; }
+            elseif (substr($head,0,2) !== 'PK') { $msg='❌ فایل APK معتبر نیست — باید فایل .apk واقعی انتخاب کنی (با PK شروع شود). فایل فعلی: '.h($origName); $err=true; }
             else {
-                @chmod($dest,0644);
-                $size=filesize($dest) ?: (int)($_FILES['apk']['size']??0);
-                $sha=@hash_file('sha256',$dest) ?: hash('sha256',(string)time());
-                $pdo->exec("UPDATE apk_files SET is_active=0");
-                $pdo->prepare("INSERT INTO apk_files (version,version_code,file_name,file_path,file_size,sha256,is_active,uploaded_by) VALUES (?,?,?,?,?,?,?,?)")
-                    ->execute([$version,$code,($_FILES['apk']['name']??'app.apk'),$dest,$size,$sha,1,$me['id']]);
-                $msg="✅ APK $version آپلود شد — حالا از لیست انتخاب کن"; $err=false;
+                $fname='BABARPHANTOM_'.$version.'_'.time().'.apk';
+                $destDir = (is_dir(APK_STORE_DIR) && is_writable(APK_STORE_DIR)) ? APK_STORE_DIR : (__DIR__ . '/../uploads_apk');
+                if (!is_dir($destDir)) @mkdir($destDir, 0775, true);
+                $dest=$destDir.'/'.$fname;
+                $moved=@move_uploaded_file($tmp,$dest);
+                if(!$moved) $moved=@copy($tmp,$dest) && @unlink($tmp);
+                if(!$moved && is_readable($tmp)){ $d=@file_get_contents($tmp); if($d!==false) $moved=@file_put_contents($dest,$d)!==false; }
+                if(!$moved){
+                    $last=error_get_last();
+                    $msg='❌ ذخیره ناموفق به '.h($dest).' — '.h($last['message'] ?? 'مجوز پوشه را چک کن').' — در File Manager روی private/apk راست کلیک → Permissions → 0775 بگذار'; $err=true;
+                    @file_put_contents($privateRoot . '/logs/upload.log', date('c')." move failed dest=$dest err=".json_encode($last)."\n", FILE_APPEND);
+                } else {
+                    @chmod($dest, 0644);
+                    $size=filesize($dest) ?: (int)($_FILES['apk']['size']??0);
+                    $sha=@hash_file('sha256',$dest) ?: hash('sha256',(string)time());
+                    try{
+                        $pdo->exec("UPDATE apk_files SET is_active=0");
+                        $pdo->prepare("INSERT INTO apk_files (version,version_code,file_name,file_path,file_size,sha256,is_active,uploaded_by) VALUES (?,?,?,?,?,?,?,?)")
+                            ->execute([$version,$code,$origName,$dest,$size,$sha,1,$me['id']]);
+                        $msg="✅ APK $version آپلود شد — ".round($size/1024/1024,2)." MB — حالا از لیست پایین انتخاب کن و ساخت بزن"; $err=false;
+                    }catch(Throwable $e){
+                        $msg='❌ خطای دیتابیس: '.$e->getMessage(); $err=true;
+                        @unlink($dest);
+                    }
+                }
             }
         }
     }
@@ -168,6 +188,7 @@ $recentDeliveries=$pdo->query("SELECT d.id, d.delivery_token, d.api_key, d.downl
 <h3>ساخت مشتری و بسته تحویل</h3>
 <?php if(!$apkFiles): ?>
 <div style="background:#7f1d1d;padding:10px;border-radius:8px;margin:6px 0;font-size:12px">⚠️ هنوز APK آپلود نشده — اول همینجا آپلود کن (بعد خودش میاد تو لیست):</div>
+<div style="background:#0f172a;padding:8px;border-radius:8px;margin:6px 0;font-size:11px;color:#94a3b8">وضعیت سرور: حد آپلود <?=h(ini_get('upload_max_filesize'))?> / حد پست <?=h(ini_get('post_max_size'))?> — پوشه private/apk: <?=is_dir(APK_STORE_DIR)?(is_writable(APK_STORE_DIR)?'✅ قابل نوشتن':'❌ غیرقابل نوشتن — permissions 0775 کن'):'❌ وجود ندارد'?> — اگر خطا دیدی با File Manager دستی بریز</div>
 <form method="post" enctype="multipart/form-data" style="background:#0f172a;padding:12px;border-radius:10px;margin:6px 0;border:1px solid #f59e0b">
 <input type="hidden" name="action" value="upload_apk">
 <div style="display:flex;gap:6px;flex-wrap:wrap">
