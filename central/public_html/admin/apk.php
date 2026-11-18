@@ -216,10 +216,16 @@ $writable=is_dir($apkStoreDir)?(is_writable($apkStoreDir)?'✅ قابل نوشت
 </table>
 </div>
 </div>
+<script src="../assets/apk-upload.js"></script>
 <script>
+var APKCFG = {
+  endpoint: 'apk_upload.php',
+  singleUrl: 'apk.php',
+  postMax: <?= (int)ini_bytes_apk((string)ini_get('post_max_size')) ?>,
+  maxBytes: <?= (int)(defined('UPLOAD_MAX_BYTES') ? UPLOAD_MAX_BYTES : 52428800) ?>
+};
 document.addEventListener('DOMContentLoaded', function(){
-  var form=document.getElementById('apkForm');
-  if(!form) return;
+  var form=document.getElementById('apkForm'); if(!form) return;
   var fileInput=document.getElementById('apkFile');
   var info=document.getElementById('apkFileInfo');
   var btn=document.getElementById('apkBtn');
@@ -228,41 +234,50 @@ document.addEventListener('DOMContentLoaded', function(){
   var txt=document.getElementById('apkProgressText');
   var status=document.getElementById('apkStatus');
   var uploading=false;
+
+  function esc(s){ return String(s).replace(/[<>&"]/g, function(c){ return {'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]; }); }
+  function say(t,c){ status.textContent=t; status.style.color=c||'#94a3b8'; }
+  function pct(l,t){ var p=t?Math.round(l/t*100):0; bar.style.width=p+'%'; txt.textContent=p+'%'; }
+
   fileInput.addEventListener('change', function(){
     var f=fileInput.files[0];
-    info.textContent = f ? 'انتخاب شد: '+f.name+' — '+(f.size/1024/1024).toFixed(2)+' MB'+(f.name.toLowerCase().endsWith('.apk')?' ✅':' ❌ فقط .apk') : '';
-    status.textContent='';
+    if(!f){ info.textContent=''; return; }
+    var isApk = f.name.toLowerCase().lastIndexOf('.apk') === f.name.length-4;
+    var h='انتخاب شد: <b>'+esc(f.name)+'</b> — '+(f.size/1048576).toFixed(2)+' MB '+(isApk?'✅':'❌ فقط .apk');
+    if(f.size > APKCFG.postMax) h += '<br><span style="color:#fbbf24">⚠️ بزرگ‌تر از post_max_size هاست ('+(APKCFG.postMax/1048576).toFixed(0)+'MB) — تکه‌تکه آپلود می‌شود</span>';
+    info.innerHTML=h; say('');
   });
+
   form.addEventListener('submit', function(e){
+    e.preventDefault();
     var f=fileInput.files[0];
-    if(!f){ status.textContent='❌ فایلی انتخاب نشده'; status.style.color='#fecaca'; e.preventDefault(); return; }
-    if(!f.name.toLowerCase().endsWith('.apk')){ status.textContent='❌ فرمت فایل معتبر نیست — فقط .apk'; status.style.color='#fecaca'; e.preventDefault(); return; }
-    if(f.size>50*1024*1024){ status.textContent='❌ حجم فایل بیشتر از حد مجاز است — '+(f.size/1024/1024).toFixed(1)+'MB > 50MB'; status.style.color='#fecaca'; e.preventDefault(); return; }
-    if(f.size===0){ status.textContent='❌ فایل خالی است'; status.style.color='#fecaca'; e.preventDefault(); return; }
-    if(uploading){ e.preventDefault(); return; }
-    if(window.XMLHttpRequest && window.FormData){
-      e.preventDefault();
-      uploading=true; btn.disabled=true; btn.textContent='⏳ در حال آپلود...';
-      wrap.style.display='block'; bar.style.width='0%'; txt.textContent='0%';
-      status.textContent='در حال ارسال به سرور...'; status.style.color='#94a3b8';
-      var fd=new FormData(form);
-      var xhr=new XMLHttpRequest();
-      xhr.open('POST', window.location.href, true);
-      xhr.setRequestHeader('X-Requested-With','XMLHttpRequest');
-      xhr.upload.onprogress=function(ev){ if(ev.lengthComputable){ var p=Math.round(ev.loaded/ev.total*100); bar.style.width=p+'%'; txt.textContent=p+'%'; } };
-      xhr.onload=function(){
+    if(!f){ say('❌ فایلی انتخاب نشده','#fecaca'); return; }
+    if(f.name.toLowerCase().lastIndexOf('.apk') !== f.name.length-4){ say('❌ فرمت فایل معتبر نیست — فقط .apk','#fecaca'); return; }
+    if(f.size > APKCFG.maxBytes){ say('❌ حجم فایل بیشتر از حد مجاز است — '+(f.size/1048576).toFixed(1)+'MB > '+(APKCFG.maxBytes/1048576).toFixed(0)+'MB','#fecaca'); return; }
+    if(f.size===0){ say('❌ فایل خالی است','#fecaca'); return; }
+    if(uploading) return;
+
+    uploading=true; btn.disabled=true; btn.textContent='⏳ در حال آپلود...';
+    wrap.style.display='block'; pct(0,1); say('شروع آپلود…');
+
+    var fields={ version:(form.version&&form.version.value)||'1.0.0', version_code:(form.version_code&&form.version_code.value)||'1', notes:(form.notes&&form.notes.value)||'' };
+    if(form.is_active && form.is_active.checked) fields.is_active='1';
+
+    window.apkUpload({
+      file:f, fields:fields, endpoint:APKCFG.endpoint, singleUrl:APKCFG.singleUrl, postMax:APKCFG.postMax,
+      onStatus:function(t){ say(t); },
+      onProgress:pct,
+      onDone:function(j){
         uploading=false; btn.disabled=false; btn.textContent='آپلود APK';
-        if(xhr.status>=200 && xhr.status<300){
-          var t=xhr.responseText||'';
-          try{ var j=JSON.parse(t); if(j.ok){ status.textContent='✅ '+j.msg; status.style.color='#bbf7d0'; bar.style.width='100%'; txt.textContent='100%'; setTimeout(function(){location.reload()},1100); } else { status.textContent='❌ '+j.msg; status.style.color='#fecaca'; wrap.style.display='none'; } }
-          catch(ex){ if(t.indexOf('آپلود با موفقیت')!==-1 || t.indexOf('✅')!==-1){ status.textContent='✅ آپلود انجام شد — در حال به‌روزرسانی...'; status.style.color='#bbf7d0'; bar.style.width='100%'; txt.textContent='100%'; setTimeout(function(){location.reload()},900);} else { var m=t.match(/class="card"[^>]*>([^<]+)/); status.textContent=m?'❌ '+m[1].trim():'❌ خطای سرور — دوباره تلاش کن'; status.style.color='#fecaca'; wrap.style.display='none'; } }
-        }else if(xhr.status===413){ status.textContent='❌ حجم فایل بیشتر از حد مجاز هاست (413)'; status.style.color='#fecaca'; wrap.style.display='none'; }
-        else if(xhr.status===0){ status.textContent='❌ ارتباط با سرور قطع شد'; status.style.color='#fecaca'; wrap.style.display='none'; }
-        else{ status.textContent='❌ خطای سرور کد '+xhr.status; status.style.color='#fecaca'; wrap.style.display='none'; }
-      };
-      xhr.onerror=function(){ uploading=false; btn.disabled=false; btn.textContent='آپلود APK'; status.textContent='❌ ارتباط با سرور قطع شد — اینترنت را چک کن'; status.style.color='#fecaca'; wrap.style.display='none'; };
-      xhr.send(fd);
-    } else { uploading=true; btn.disabled=true; btn.textContent='⏳ در حال آپلود...'; }
+        bar.style.width='100%'; txt.textContent='100%';
+        say('✅ '+(j.msg||'آپلود با موفقیت انجام شد'),'#bbf7d0');
+        setTimeout(function(){ location.reload(); },1400);
+      },
+      onError:function(m){
+        uploading=false; btn.disabled=false; btn.textContent='آپلود APK';
+        wrap.style.display='none'; say('❌ '+m,'#fecaca');
+      }
+    });
   });
 });
 </script>

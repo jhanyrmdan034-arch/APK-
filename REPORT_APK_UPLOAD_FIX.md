@@ -3,6 +3,93 @@
 تاریخ: 2026-11-18 · شاخه: `arena/a4943678-apk` · کامیت: `01c1bd8`
 مسیر: `/admin/delivery_builder.php` و `/admin/apk.php`
 
+
+---
+
+## ۰) به‌روزرسانی ۱۴۰۵/۰۸/۲۸ — علت واقعی روی هاست (post_max_size = 2M)
+
+اسکرین‌شات پنل روی `nexsrv.ir` نشان داد:
+
+```
+upload_max_filesize: 2M      post_max_size: 2M
+memory_limit: 26M            max_execution_time: 300s
+حد برنامه (UPLOAD_MAX_BYTES): 50M      private/apk: ✅ قابل نوشتن
+فایل انتخاب‌شده: BABARPHANTOM (1)_sign_sign.apk — 20.23 MB
+نتیجه: ❌ خطای سرور (404)
+```
+
+### چرا ۴۰۴؟
+
+`post_max_size = 2M` است، ولی فایل ۲۰.۲۳MB با `multipart/form-data` فرستاده می‌شد.
+بدنه درخواست ~۲۱MB است و سریع‌تر از آنکه به PHP برسد، توسط وب‌سرور (LiteSpeed) رد می‌شود.
+سرور به‌جای ۴۱۳ صفحهٔ ۴۰۴ خودش را برمی‌گرداند:
+
+```
+404 Not Found — The resource requested could not be found on this server!
+```
+
+همان صفحه‌ای که قبلاً به‌صورت جدا دیده شد، پاسخ همان درخواست آپلود بود. یعنی کد PHP اصلاً
+اجرا نمی‌شد؛ به همین دلیل هیچ‌کدام از ۷ پیام فارسی خطا هم نمایش داده نمی‌شد.
+
+پس **دلیل اصلی «آپلود نمی‌شود» نه فرم بود و نه JS؛ سقف ۲ مگابایتی هاست بود.**
+
+### راه‌حل: آپلود تکه‌تکه (Chunked) بدون نیاز به تغییر هاست
+
+فایل جدید `public_html/admin/apk_upload.php` + `public_html/assets/apk-upload.js`:
+
+1. فایل در تکه‌های **۱ مگابایتی** (کمتر از `post_max_size=2M`) ارسال می‌شود
+2. هر تکه با **بدنه خام** (`application/octet-stream`) می‌رود — نه multipart، نه JSON
+   → فایروال/مود‌سکیوریتی هاست هم روی نام فایل با پرانتز و فاصله گیر نمی‌دهد
+3. تکه‌ها در `private/uploads/incoming/<token>/part.apk` به هم چسبانده می‌شوند
+4. در پایان: بررسی حجم دقیق، هدر `PK`، محاسبه `SHA256`، انتقال اتمیک به `private/apk`
+   با نام تصادفی، `chmod 0644`، و ثبت در `apk_files` داخل تراکنش
+5. اگر ثبت در DB شکست بخورد: فایل حذف و APK فعال قبلی دست‌نخورده می‌ماند
+6. حالت خودکار: اگر فایل از `post_max_size` کوچک‌تر بود، همان آپلود یک‌جا انجام می‌شود؛
+   اگر یک‌جا ۴۰۴/۴۱۳/۵۰۰ داد، **خودکار** به حالت تکه‌تکه سوییچ می‌کند
+
+نقاط پایانی (همه POST، پاسخ JSON):
+
+| اکشن | کار |
+|---|---|
+| `apk_upload.php?action=ping` | تست دسترسی + نمایش واقعی post_max/upload_max/پوشه‌ها |
+| `?action=init` | شروع جلسه، ساخت توکن ۳۲hex، بررسی سقف حجم و فضای دیسک |
+| `?action=chunk&token=…&index=…` | دریافت تکه (بدنه خام) و append |
+| `?action=finish&token=…` | اعتبارسنجی + انتقال + ثبت در DB |
+| `?action=abort&token=…` | پاک‌سازی فایل ناقص |
+
+### فایل‌های اضافه‌شده در این مرحله
+
+- `central/public_html/admin/apk_upload.php` — نقطه پایانی تکه‌تکه (۲۷۰ خط)
+- `central/public_html/assets/apk-upload.js` — آپلودر سمت مرورگر با fallback خودکار
+- `central/public_html/admin/delivery_builder.php` — استفاده از آپلودر جدید + چک‌باکس «فعال شود»
+- `central/public_html/admin/apk.php` — همان آپلودر
+- `central/private/uploads/incoming/` — پوشه موقت (باید ۰۷۷۵ و قابل نوشتن باشد)
+
+### اگر می‌خواهی حالت یک‌جا هم سریع باشد (اختیاری)
+
+cPanel → **MultiPHP INI Editor** (یا Select PHP Version → Options):
+
+```ini
+upload_max_filesize = 50M
+post_max_size = 55M
+max_execution_time = 300
+memory_limit = 256M
+```
+
+با این کار یک درخواست ۲۰MB هم پذیرفته می‌شود؛ ولی **بدون آن هم آپلود کار می‌کند** چون
+حالت تکه‌تکه فعال است.
+
+### چک‌لیست تست بعد از آپلود پچ
+
+1. `private/uploads` و `private/apk` → ۰۷۷۵
+2. `admin/apk_upload.php?action=ping` را در تب جدید باز کن — باید فقط با POST کار کند
+   (پیام «این آدرس فقط POST را قبول می‌کند» یعنی فایل سرجایش است ✅)
+3. `admin/delivery_builder.php` → Ctrl+F5 → انتخاب APK → آپلود
+4. زیر فایل باید بنویسد: «بزرگ‌تر از post_max_size هاست (2MB) — تکه‌تکه آپلود می‌شود»
+5. نوار پیشرفت باید تا ۱۰۰٪ برود و پیام «آپلود با موفقیت انجام شد — SHA256: …» بیاید
+6. `private/apk` → فایل با نام `BABARPHANTOM_1.0.0_YYYYmmdd_HHMMSS_<rand>.apk`
+7. `private/logs/upload.log` → خط `[apk_upload] ok id=… size=… sha=…`
+
 ---
 
 ## ۱) علت دقیق مشکل (چهار باگ هم‌زمان)

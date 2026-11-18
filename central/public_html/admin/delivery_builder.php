@@ -344,6 +344,7 @@ $freeTxt = $freeMb!==false ? round($freeMb/1024/1024).' MB آزاد' : 'نامش
 <div id="apkProgressWrap" style="display:none;margin-top:8px">
 <div class="progress-wrap"><div id="apkProgressBar" class="progress-bar"></div><span id="apkProgressText" class="progress-text">0%</span></div>
 </div>
+<label style="display:block;margin-top:8px;font-size:11px;color:#cbd5e1"><input type="checkbox" name="is_active" id="apkIsActive"> همین حالا فعال شود (اختیاری — اگر نزنی، ذخیره می‌شود و نسخه فعال قبلی دست‌نخورده می‌ماند)</label>
 <div id="apkUploadStatus" style="font-size:12px;margin-top:6px;min-height:18px"></div>
 <button id="apkUploadBtn" type="submit" style="background:#f59e0b;color:#000;width:100%;margin-top:8px;font-size:14px">📤 آپلود APK</button>
 <small style="color:#94a3b8">با کلیک، فایل با <b>multipart/form-data</b> و <b>FormData</b> ارسال می‌شود (نه JSON) — نوار پیشرفت می‌بینی، دکمه تا پایان غیرفعال می‌ماند و از ارسال دوباره جلوگیری می‌شود.</small>
@@ -418,128 +419,83 @@ $freeTxt = $freeMb!==false ? round($freeMb/1024/1024).' MB آزاد' : 'نامش
 </div>
 
 </div>
+<script src="../assets/apk-upload.js"></script>
 <script>
+var APKCFG = {
+  endpoint: 'apk_upload.php',
+  singleUrl: 'delivery_builder.php',
+  postMax: <?= (int)ini_bytes((string)ini_get('post_max_size')) ?>,
+  maxBytes: <?= (int)(defined('UPLOAD_MAX_BYTES') ? UPLOAD_MAX_BYTES : 52428800) ?>
+};
 document.addEventListener('DOMContentLoaded', function(){
   var form = document.getElementById('apkUploadForm');
   if(!form) return;
   var fileInput = document.getElementById('apkFile');
-  var fileInfo = document.getElementById('apkFileInfo');
-  var btn = document.getElementById('apkUploadBtn');
-  var wrap = document.getElementById('apkProgressWrap');
-  var bar = document.getElementById('apkProgressBar');
-  var txt = document.getElementById('apkProgressText');
-  var status = document.getElementById('apkUploadStatus');
+  var fileInfo  = document.getElementById('apkFileInfo');
+  var btn       = document.getElementById('apkUploadBtn');
+  var wrap      = document.getElementById('apkProgressWrap');
+  var bar       = document.getElementById('apkProgressBar');
+  var txt       = document.getElementById('apkProgressText');
+  var status    = document.getElementById('apkUploadStatus');
   var uploading = false;
+
+  function esc(s){ return String(s).replace(/[<>&"]/g, function(c){ return {'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]; }); }
+  function say(t, color){ status.textContent = t; status.style.color = color || '#94a3b8'; }
+  function pct(l, t){ var p = t ? Math.round(l / t * 100) : 0; bar.style.width = p + '%'; txt.textContent = p + '%'; }
+
   fileInput.addEventListener('change', function(){
     var f = fileInput.files[0];
-    if(!f){ fileInfo.textContent=''; return; }
-    fileInfo.textContent = 'انتخاب شد: ' + f.name + ' — ' + (f.size/1024/1024).toFixed(2) + ' MB' + (f.name.toLowerCase().endsWith('.apk')?' ✅': ' ❌ فقط .apk');
-    status.textContent='';
+    if(!f){ fileInfo.textContent = ''; return; }
+    var isApk = f.name.toLowerCase().lastIndexOf('.apk') === f.name.length - 4;
+    var h = 'انتخاب شد: <b>' + esc(f.name) + '</b> — ' + (f.size/1048576).toFixed(2) + ' MB ' + (isApk ? '✅' : '❌ فقط .apk');
+    if(f.size > APKCFG.postMax){
+      h += '<br><span style="color:#fbbf24">⚠️ بزرگ‌تر از post_max_size هاست (' + (APKCFG.postMax/1048576).toFixed(0) + 'MB) — به‌صورت خودکار تکه‌تکه آپلود می‌شود</span>';
+    }
+    fileInfo.innerHTML = h;
+    say('');
   });
+
   form.addEventListener('submit', function(e){
+    e.preventDefault();
     var f = fileInput.files[0];
-    if(!f){
-      status.textContent='❌ فایلی انتخاب نشده — دوباره انتخاب کن';
-      status.style.color='#fecaca';
-      e.preventDefault(); return;
-    }
-    if(!f.name.toLowerCase().endsWith('.apk')){
-      status.textContent='❌ فرمت فایل معتبر نیست — فقط .apk انتخاب کن (فایل: '+f.name+')';
-      status.style.color='#fecaca';
-      e.preventDefault(); return;
-    }
-    // حجم: چک سمت کلاینت (اطلاع‌رسانی سریع)
-    var maxClient = 50*1024*1024;
-    try{
-      var hostMaxText = "<?=h($hostInfo['upload_max_filesize'])?>";
-      // اگر هاست کمتر بود، همون را نشان بده — فقط اطلاع
-    }catch(ex){}
-    if(f.size > maxClient){
-      status.textContent='❌ حجم فایل بیشتر از حد مجاز است — '+(f.size/1024/1024).toFixed(1)+'MB > 50MB';
-      status.style.color='#fecaca';
-      e.preventDefault(); return;
-    }
-    if(f.size===0){
-      status.textContent='❌ فایل خالی است';
-      status.style.color='#fecaca';
-      e.preventDefault(); return;
-    }
-    if(uploading){
-      e.preventDefault(); return;
-    }
-    // progressive enhancement: if XHR available use it for progress, else native submit
-    if(window.XMLHttpRequest && window.FormData){
-      e.preventDefault();
-      uploading=true; btn.disabled=true; btn.textContent='⏳ در حال آپلود...';
-      wrap.style.display='block'; bar.style.width='0%'; txt.textContent='0%';
-      status.textContent='در حال ارسال به سرور...';
-      status.style.color='#94a3b8';
-      var fd = new FormData(form);
-      // اطمینان: FormData contains file as multipart, not JSON
-      var xhr = new XMLHttpRequest();
-      xhr.open('POST', form.action || window.location.href, true);
-      xhr.setRequestHeader('X-Requested-With','XMLHttpRequest');
-      xhr.upload.onprogress = function(ev){
-        if(ev.lengthComputable){
-          var p=Math.round(ev.loaded/ev.total*100);
-          bar.style.width=p+'%'; txt.textContent=p+'%';
-        }
-      };
-      xhr.onload = function(){
-        uploading=false; btn.disabled=false; btn.textContent='📤 آپلود APK';
-        if(xhr.status>=200 && xhr.status<300){
-          var text = xhr.responseText||'';
-          try{
-            var j=JSON.parse(text);
-            if(j.ok){
-              status.textContent='✅ '+j.msg;
-              status.style.color='#bbf7d0';
-              bar.style.width='100%'; txt.textContent='100%';
-              setTimeout(function(){ location.reload(); }, 1100);
-            }else{
-              status.textContent='❌ '+j.msg;
-              status.style.color='#fecaca';
-              wrap.style.display='none';
-            }
-          }catch(ex){
-            if(text.indexOf('✅')!==-1 || text.indexOf('آپلود با موفقیت')!==-1){
-              status.textContent='✅ آپلود انجام شد — در حال به‌روزرسانی لیست...';
-              status.style.color='#bbf7d0';
-              bar.style.width='100%'; txt.textContent='100%';
-              setTimeout(function(){ location.reload(); }, 900);
-            }else{
-              var m=text.match(/class="alert"[^>]*>([^<]+)/);
-              status.textContent = m? '❌ '+m[1].trim().replace(/&[^;]+;/g,'') : '❌ خطای سرور — دوباره تلاش کن (کد '+xhr.status+')';
-              status.style.color='#fecaca';
-              wrap.style.display='none';
-            }
-          }
-        }else if(xhr.status===413){
-          status.textContent='❌ حجم فایل بیشتر از حد مجاز هاست است (413 Request Entity Too Large) — هاست را 50M کن';
-          status.style.color='#fecaca'; wrap.style.display='none';
-        }else if(xhr.status===0){
-          status.textContent='❌ ارتباط با سرور قطع شد — اینترنت را چک کن';
-          status.style.color='#fecaca'; wrap.style.display='none';
-        }else{
-          status.textContent='❌ خطای سرور (کد '+xhr.status+') — دوباره تلاش کن';
-          status.style.color='#fecaca'; wrap.style.display='none';
-        }
-      };
-      xhr.onerror = function(){
-        uploading=false; btn.disabled=false; btn.textContent='📤 آپلود APK';
-        status.textContent='❌ ارتباط با سرور قطع شد — اینترنت/فایروال را چک کن';
-        status.style.color='#fecaca'; wrap.style.display='none';
-      };
-      xhr.onabort = function(){
-        uploading=false; btn.disabled=false; btn.textContent='📤 آپلود APK';
-        status.textContent='❌ آپلود لغو شد';
-        status.style.color='#fecaca';
-      };
-      xhr.send(fd);
-    }else{
-      // fallback native: disable button to prevent double submit
-      uploading=true; btn.disabled=true; btn.textContent='⏳ در حال آپلود...';
-    }
+    if(!f){ say('❌ فایلی انتخاب نشده — دوباره انتخاب کن', '#fecaca'); return; }
+    if(f.name.toLowerCase().lastIndexOf('.apk') !== f.name.length - 4){ say('❌ فرمت فایل معتبر نیست — فقط .apk', '#fecaca'); return; }
+    if(f.size > APKCFG.maxBytes){ say('❌ حجم فایل بیشتر از حد مجاز است — ' + (f.size/1048576).toFixed(1) + 'MB > ' + (APKCFG.maxBytes/1048576).toFixed(0) + 'MB', '#fecaca'); return; }
+    if(f.size === 0){ say('❌ فایل خالی است', '#fecaca'); return; }
+    if(uploading) return;
+
+    uploading = true;
+    btn.disabled = true; btn.textContent = '⏳ در حال آپلود...';
+    wrap.style.display = 'block'; pct(0, 1);
+    say('شروع آپلود…');
+
+    var fields = {
+      version: (form.version && form.version.value) || '1.0.0',
+      version_code: (form.version_code && form.version_code.value) || '1'
+    };
+    var chk = document.getElementById('apkIsActive');
+    if(chk && chk.checked) fields.is_active = '1';
+
+    window.apkUpload({
+      file: f,
+      fields: fields,
+      endpoint: APKCFG.endpoint,
+      singleUrl: APKCFG.singleUrl,
+      postMax: APKCFG.postMax,
+      onStatus: function(t){ say(t); },
+      onProgress: pct,
+      onDone: function(j){
+        uploading = false; btn.disabled = false; btn.textContent = '📤 آپلود APK';
+        bar.style.width = '100%'; txt.textContent = '100%';
+        say('✅ ' + (j.msg || 'آپلود با موفقیت انجام شد') + (j.sha256 ? (' — SHA256: ' + j.sha256.slice(0,12) + '…') : ''), '#bbf7d0');
+        setTimeout(function(){ location.reload(); }, 1500);
+      },
+      onError: function(m){
+        uploading = false; btn.disabled = false; btn.textContent = '📤 آپلود APK';
+        wrap.style.display = 'none';
+        say('❌ ' + m, '#fecaca');
+      }
+    });
   });
 });
 </script>
